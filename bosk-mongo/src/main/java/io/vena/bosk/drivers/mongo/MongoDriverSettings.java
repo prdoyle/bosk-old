@@ -1,10 +1,14 @@
 package io.vena.bosk.drivers.mongo;
 
 import io.vena.bosk.BoskDriver;
+import io.vena.bosk.Path;
 import io.vena.bosk.drivers.mongo.Formatter.DocumentFields;
+import java.util.Collection;
 import lombok.Builder;
 import lombok.Builder.Default;
 import lombok.Value;
+
+import static java.util.Collections.emptyList;
 
 @Value
 @Builder
@@ -12,6 +16,7 @@ public class MongoDriverSettings {
 	String database;
 
 	@Default long flushTimeoutMS = 30_000;
+	@Default Collection<Path> separateCollections = emptyList();
 	@Default FlushMode flushMode = FlushMode.ECHO;
 	@Default Testing testing = Testing.builder().build();
 
