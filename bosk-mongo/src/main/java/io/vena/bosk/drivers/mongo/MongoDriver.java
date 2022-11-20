@@ -15,7 +15,12 @@ public interface MongoDriver<R extends Entity> extends BoskDriver<R> {
 		MongoDriverSettings driverSettings,
 		BsonPlugin bsonPlugin
 	) {
-		return (b, d) -> new SingleDocumentMongoDriver<>(b, clientSettings, driverSettings, bsonPlugin, d);
+		switch (driverSettings.separateCollections().size()) {
+			case 0:
+				return (b, d) -> new SingleDocumentMongoDriver<>(b, clientSettings, driverSettings, bsonPlugin, d);
+			default:
+				throw new IllegalArgumentException("Cannot support " + driverSettings.separateCollections().size() + " separate collections");
+		}
 	}
 
 	interface MongoDriverFactory<RR extends Entity> extends DriverFactory<RR> {
