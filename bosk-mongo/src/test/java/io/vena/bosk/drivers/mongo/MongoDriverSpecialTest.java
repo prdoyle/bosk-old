@@ -20,12 +20,14 @@ import io.vena.bosk.drivers.BufferingDriver;
 import io.vena.bosk.drivers.state.TestEntity;
 import io.vena.bosk.drivers.state.TestValues;
 import io.vena.bosk.exceptions.InvalidTypeException;
+import io.vena.bosk.junit.ParametersByName;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.stream.Stream;
 import lombok.Value;
 import lombok.experimental.Accessors;
 import org.bson.BsonDocument;
@@ -51,10 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * Tests for MongoDB-specific functionality
  */
 class MongoDriverSpecialTest {
-	private static final String TEST_DB = MongoDriverSpecialTest.class.getSimpleName() + "_DB";
-	private static final MongoDriverSettings driverSettings = MongoDriverSettings.builder()
-		.database(TEST_DB)
-		.build();
+	private final MongoDriverSettings driverSettings;
 
 	private static final Identifier entity123 = Identifier.from("123");
 	private static final Identifier entity124 = Identifier.from("124");
@@ -68,6 +67,19 @@ class MongoDriverSpecialTest {
 	@BeforeAll
 	static void setupMongoConnection() {
 		mongoService = new MongoService();
+	}
+
+	@ParametersByName
+	MongoDriverSpecialTest(MongoDriverSettings driverSettings) {
+		this.driverSettings = driverSettings;
+	}
+
+	public static Stream<MongoDriverSettings> driverSettings() {
+		return Stream.of(
+			MongoDriverSettings.builder()
+				.database(MongoDriverSpecialTest.class.getSimpleName() + "_singleDoc_DB")
+				.build()
+		);
 	}
 
 	@BeforeEach
@@ -86,13 +98,7 @@ class MongoDriverSpecialTest {
 		tearDownActions.forEach(Runnable::run);
 	}
 
-	//@AfterAll
-	static void deleteDatabase() {
-		mongoService.client().getDatabase(TEST_DB).drop();
-		mongoService.close();
-	}
-
-	@Test
+	@ParametersByName
 	@UsesMongoService
 	void warmStart_stateMatches() throws InvalidTypeException, InterruptedException, IOException {
 		Bosk<TestEntity> setupBosk = new Bosk<TestEntity>("Test bosk", TestEntity.class, this::initialRoot, driverFactory);
@@ -116,7 +122,7 @@ class MongoDriverSpecialTest {
 
 	}
 
-	@Test
+	@ParametersByName
 	@UsesMongoService
 	void flush_localStateUpdated() throws InvalidTypeException, InterruptedException, IOException {
 		// Set up MongoDriver writing to a modified BufferingDriver that lets us
@@ -171,7 +177,7 @@ class MongoDriverSpecialTest {
 
 	}
 
-	@Test
+	@ParametersByName
 	@UsesMongoService
 	void listing_stateMatches() throws InvalidTypeException, InterruptedException, IOException {
 		Bosk<TestEntity> bosk = new Bosk<TestEntity>("Test bosk", TestEntity.class, this::initialRoot, driverFactory);
@@ -209,7 +215,7 @@ class MongoDriverSpecialTest {
 		}
 	}
 
-	@Test
+	@ParametersByName
 	@DisruptsMongoService
 	void networkOutage_boskRecovers() throws InvalidTypeException, InterruptedException, IOException {
 		Bosk<TestEntity> bosk = new Bosk<TestEntity>("Test bosk", TestEntity.class, this::initialRoot, driverFactory);
@@ -251,7 +257,7 @@ class MongoDriverSpecialTest {
 		assertEquals(expected, latecomerActual);
 	}
 
-	@Test
+	@ParametersByName
 	@UsesMongoService
 	void initialStateHasNonexistentFields_ignored() {
 		// Upon creating bosk, the initial value will be saved to MongoDB
@@ -273,7 +279,7 @@ class MongoDriverSpecialTest {
 		assertEquals(expected, actual);
 	}
 
-	@Test
+	@ParametersByName
 	@UsesMongoService
 	void updateHasNonexistentFields_ignored() throws InvalidTypeException, IOException, InterruptedException {
 		Bosk<TestEntity> bosk = new Bosk<TestEntity>("Newer bosk", TestEntity.class, this::initialRoot, driverFactory);
@@ -301,7 +307,7 @@ class MongoDriverSpecialTest {
 		assertEquals(expected, actual);
 	}
 
-	@Test
+	@ParametersByName
 	@UsesMongoService
 	void updateNonexistentField_ignored() throws InvalidTypeException, IOException, InterruptedException {
 		Bosk<TestEntity> bosk = new Bosk<TestEntity>("Newer bosk", TestEntity.class, this::initialRoot, driverFactory);
@@ -329,7 +335,7 @@ class MongoDriverSpecialTest {
 		assertEquals(expected, actual);
 	}
 
-	@Test
+	@ParametersByName
 	@UsesMongoService
 	void deleteNonexistentField_ignored() throws InvalidTypeException, IOException, InterruptedException {
 		Bosk<TestEntity> bosk = new Bosk<TestEntity>("Newer bosk", TestEntity.class, this::initialRoot, driverFactory);
@@ -355,7 +361,7 @@ class MongoDriverSpecialTest {
 		assertEquals(expected, actual);
 	}
 
-	@Test
+	@ParametersByName
 	@UsesMongoService
 	void refurbish_createsField() throws IOException, InterruptedException {
 		// We'll use this as an honest observer of the actual state
@@ -389,7 +395,7 @@ class MongoDriverSpecialTest {
 		assertEquals(Optional.of(TestValues.blank()), after); // Now it's there
 	}
 
-	@Test
+	@ParametersByName
 	@UsesMongoService
 	void refurbish_fixesMetadata() throws IOException, InterruptedException {
 		// Set up the database so it looks basically right
