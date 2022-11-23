@@ -2,6 +2,7 @@ package io.vena.bosk.drivers.mongo;
 
 import io.vena.bosk.DriverFactory;
 import io.vena.bosk.Entity;
+import io.vena.bosk.Path;
 import io.vena.bosk.drivers.DriverConformanceTest;
 import io.vena.bosk.junit.ParametersByName;
 import java.util.ArrayDeque;
@@ -9,6 +10,8 @@ import java.util.Deque;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+
+import static java.util.Collections.singletonList;
 
 @UsesMongoService
 class MongoDriverConformanceTest extends DriverConformanceTest {
@@ -23,7 +26,11 @@ class MongoDriverConformanceTest extends DriverConformanceTest {
 	public static Stream<MongoDriverSettings> driverSettings() {
 		return Stream.of(
 			MongoDriverSettings.builder()
-				.database(MongoDriverConformanceTest.class.getSimpleName() + "_singleDoc_DB")
+				.database(MongoDriverSpecialTest.class.getSimpleName() + "_singleDoc_DB")
+				.build(),
+			MongoDriverSettings.builder()
+				.database(MongoDriverSpecialTest.class.getSimpleName() + "_multiDoc_DB")
+				.separateCollections(singletonList(Path.just("catalog")))
 				.build()
 		);
 	}
