@@ -37,13 +37,12 @@ import org.bson.Document;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
 import static io.vena.bosk.ListingEntry.LISTING_ENTRY;
 import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.path;
-import static io.vena.bosk.drivers.mongo.SingleDocumentMongoDriver.COLLECTION_NAME;
 import static java.lang.Long.max;
 import static java.lang.System.currentTimeMillis;
+import static java.util.Collections.singletonList;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -76,8 +75,12 @@ class MongoDriverSpecialTest {
 
 	public static Stream<MongoDriverSettings> driverSettings() {
 		return Stream.of(
+//			MongoDriverSettings.builder()
+//				.database(MongoDriverSpecialTest.class.getSimpleName() + "_singleDoc_DB")
+//				.build(),
 			MongoDriverSettings.builder()
-				.database(MongoDriverSpecialTest.class.getSimpleName() + "_singleDoc_DB")
+				.database(MongoDriverSpecialTest.class.getSimpleName() + "_multiDoc_DB")
+				.separateCollections(singletonList(Path.just("catalog")))
 				.build()
 		);
 	}
@@ -405,14 +408,18 @@ class MongoDriverSpecialTest {
 			createDriverFactory()
 		);
 
+		MongoDriverDatabaseDetails details = (MongoDriverDatabaseDetails) initialBosk.driver();
+		String collectionName = details.mainCollectionName();
+		String documentID     = details.rootDocumentID();
+
 		// (Close this so it doesn't crash when we delete the "path" field)
 		((MongoDriver<TestEntity>)initialBosk.driver()).close();
 
 		// Remove the `path` metadata field
 		MongoCollection<Document> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME);
-		BsonDocument filterDoc = new BsonDocument("_id", new BsonString("boskDocument"));
+			.getCollection(collectionName);
+		BsonDocument filterDoc = new BsonDocument("_id", new BsonString(documentID));
 		BsonDocument deletionDoc = new BsonDocument("$unset", new BsonDocument(path.name(), new BsonNull())); // Value is ignored
 		collection.updateOne(filterDoc, deletionDoc);
 

@@ -48,7 +48,7 @@ import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.bson.BsonBoolean.FALSE;
 
-final class SingleDocumentMongoDriver<R extends Entity> implements MongoDriver<R> {
+final class SingleDocumentMongoDriver<R extends Entity> implements MongoDriver<R>, MongoDriverDatabaseDetails {
 	private final String description;
 	private final MongoDriverSettings settings;
 	private final Formatter formatter;
@@ -59,8 +59,6 @@ final class SingleDocumentMongoDriver<R extends Entity> implements MongoDriver<R
 	private final Reference<R> rootRef;
 	private final String echoPrefix;
 	private final AtomicLong echoCounter = new AtomicLong(1_000_000_000_000L); // Start with a big number so the length doesn't change often
-
-	static final String COLLECTION_NAME = "boskCollection";
 
 	SingleDocumentMongoDriver(Bosk<R> bosk, MongoClientSettings clientSettings, MongoDriverSettings driverSettings, BsonPlugin bsonPlugin, BoskDriver<R> downstream) {
 		validateMongoClientSettings(clientSettings);
@@ -73,7 +71,7 @@ final class SingleDocumentMongoDriver<R extends Entity> implements MongoDriver<R
 			.getCollection(COLLECTION_NAME);
 		this.receiver = new SingleDocumentMongoChangeStreamReceiver<>(downstream, bosk.rootReference(), collection, formatter);
 		this.echoPrefix = bosk.instanceID().toString();
-		this.documentID = new BsonString("boskDocument");
+		this.documentID = new BsonString(DOCUMENT_ID);
 		this.rootRef = bosk.rootReference();
 	}
 
@@ -385,6 +383,19 @@ final class SingleDocumentMongoDriver<R extends Entity> implements MongoDriver<R
 		String tokenData;
 		@Override public String toString() { return tokenData; }
 	}
+
+	@Override
+	public String mainCollectionName() {
+		return COLLECTION_NAME;
+	}
+
+	@Override
+	public String rootDocumentID() {
+		return DOCUMENT_ID;
+	}
+
+	private static final String COLLECTION_NAME = "boskCollection";
+	private static final String DOCUMENT_ID = "boskDocument";
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SingleDocumentMongoDriver.class);
 }

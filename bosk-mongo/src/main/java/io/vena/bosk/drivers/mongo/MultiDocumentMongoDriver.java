@@ -49,7 +49,7 @@ import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.bson.BsonBoolean.FALSE;
 
-final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R> {
+final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>, MongoDriverDatabaseDetails {
 	private final String description;
 	private final MongoDriverSettings settings;
 	private final Formatter formatter;
@@ -61,9 +61,6 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 	private final Reference<R> rootRef;
 	private final String echoPrefix;
 	private final AtomicLong echoCounter = new AtomicLong(1_000_000_000_000L); // Start with a big number so the length doesn't change often
-
-	static final String MAIN_COLLECTION_NAME = "main";
-	static final String ROOT_DOCUMENT_ID = "root";
 
 	MultiDocumentMongoDriver(Bosk<R> bosk, MongoClientSettings clientSettings, MongoDriverSettings driverSettings, BsonPlugin bsonPlugin, BoskDriver<R> downstream) {
 		validateMongoClientSettings(clientSettings);
@@ -388,6 +385,20 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 		String tokenData;
 		@Override public String toString() { return tokenData; }
 	}
+
+	@Override
+	public String mainCollectionName() {
+		return MAIN_COLLECTION_NAME;
+	}
+
+	@Override
+	public String rootDocumentID() {
+		return ROOT_DOCUMENT_ID;
+	}
+
+	private static final String MAIN_COLLECTION_NAME = "main";
+	private static final String ROOT_DOCUMENT_ID = "root";
+
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(MultiDocumentMongoDriver.class);
 }
