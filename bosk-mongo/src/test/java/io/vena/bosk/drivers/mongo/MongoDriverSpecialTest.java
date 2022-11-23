@@ -75,9 +75,9 @@ class MongoDriverSpecialTest {
 
 	public static Stream<MongoDriverSettings> driverSettings() {
 		return Stream.of(
-//			MongoDriverSettings.builder()
-//				.database(MongoDriverSpecialTest.class.getSimpleName() + "_singleDoc_DB")
-//				.build(),
+			MongoDriverSettings.builder()
+				.database(MongoDriverSpecialTest.class.getSimpleName() + "_singleDoc_DB")
+				.build(),
 			MongoDriverSettings.builder()
 				.database(MongoDriverSpecialTest.class.getSimpleName() + "_multiDoc_DB")
 				.separateCollections(singletonList(Path.just("catalog")))
