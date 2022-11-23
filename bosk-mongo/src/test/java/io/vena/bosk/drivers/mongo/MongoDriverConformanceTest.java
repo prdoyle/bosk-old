@@ -12,8 +12,6 @@ import org.junit.jupiter.api.BeforeAll;
 
 @UsesMongoService
 class MongoDriverConformanceTest extends DriverConformanceTest {
-	public static final String TEST_DB = MongoDriverConformanceTest.class.getSimpleName() + "_DB";
-
 	private final Deque<Runnable> tearDownActions = new ArrayDeque<>();
 	private static MongoService mongoService;
 
