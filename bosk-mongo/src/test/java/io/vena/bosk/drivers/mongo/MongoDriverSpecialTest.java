@@ -83,7 +83,6 @@ class MongoDriverSpecialTest implements TestParameters {
 		// Start with a clean slate
 		mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME)
 			.drop();
 	}
 
