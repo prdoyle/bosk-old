@@ -67,13 +67,12 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 		this.description = MultiDocumentMongoDriver.class.getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
 		this.mongoClient = MongoClients.create(clientSettings);
-		this.formatter = new Formatter(bosk, bsonPlugin);
-		this.database = mongoClient
-			.getDatabase(driverSettings.database());
+		this.database = mongoClient.getDatabase(driverSettings.database());
 		this.mainCollection = database.getCollection(MAIN_COLLECTION_NAME);
+		this.rootDocumentID = new BsonString(ROOT_DOCUMENT_ID);
+		this.formatter = new Formatter(bosk, bsonPlugin);
 		this.receiver = new MultiDocumentMongoChangeStreamReceiver<>(downstream, bosk.rootReference(), mainCollection, formatter);
 		this.echoPrefix = bosk.instanceID().toString();
-		this.rootDocumentID = new BsonString(ROOT_DOCUMENT_ID);
 		this.rootRef = bosk.rootReference();
 	}
 
