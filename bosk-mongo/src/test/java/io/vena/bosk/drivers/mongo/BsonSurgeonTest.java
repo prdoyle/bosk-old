@@ -9,6 +9,8 @@ import io.vena.bosk.drivers.AbstractDriverTest;
 import io.vena.bosk.drivers.state.TestEntity;
 import io.vena.bosk.exceptions.InvalidTypeException;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static io.vena.bosk.drivers.mongo.Formatter.dottedFieldNameSegments;
+import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -47,7 +50,7 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 			entireDoc = (BsonDocument) formatter.object2bsonValue(bosk.rootReference().value(), bosk.rootReference().targetType());
 		}
 
-		Map<Path, BsonDocument> parts = scatter(separateCollectionRef, entireDoc.clone());
+		Map<Path, BsonDocument> parts = scatter(separateCollectionRef, entireDoc);
 		BsonDocument gathered = gather(parts);
 
 		assertEquals(entireDoc, gathered);
@@ -60,16 +63,17 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 
 	@NotNull
 	private Map<Path, BsonDocument> scatter(Reference<?> separateCollectionRef, BsonDocument entireDoc) {
-		Map<Path, BsonDocument> parts = new LinkedHashMap<>();
+		BsonDocument docUnderConstruction = entireDoc.clone();
+		Map<Path, BsonDocument> parts = new HashMap<>();
 		ArrayList<String> segments = dottedFieldNameSegments(separateCollectionRef, bosk.rootReference());
-		BsonDocument docToSeparate = lookup(entireDoc, segments.subList(1, segments.size()));
+		BsonDocument docToSeparate = lookup(docUnderConstruction, segments.subList(1, segments.size()));
 		for (Map.Entry<String, BsonValue> entry: docToSeparate.entrySet()) {
 			parts.put(separateCollectionRef.path().then(entry.getKey()), (BsonDocument) entry.getValue());
 			entry.setValue(BsonBoolean.TRUE);
 		}
 
-		// entireDoc has now had the scattered pieces replaced by BsonBoolean.TRUE
-		parts.put(Path.empty(), entireDoc);
+		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
+		parts.put(Path.empty(), docUnderConstruction);
 
 		return parts;
 	}
@@ -85,15 +89,23 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	private BsonDocument gather(Map<Path, BsonDocument> parts) {
 		BsonDocument whole = parts.get(Path.empty());
 
-		// The parts are listed bottom-up. We want to assemble them top-down
+		// Sorting by path length ensures we gather parents before children.
+		// (Sorting lexicographically might be better for cache locality.)
 		var partsList = new ArrayList<>(parts.entrySet());
-		var iter = partsList.listIterator(partsList.size()-1);
-		while (iter.hasPrevious()) {
-			var entry = iter.previous();
+		partsList.sort(comparing(entry -> entry.getKey().length()));
+
+		for (var entry: partsList) {
 			Path path = entry.getKey();
+			if (path.isEmpty()) {
+				// We're already merging everything into the main document. Skip the root entry.
+				continue;
+			}
 			List<String> containerSegments = path.truncatedBy(1).segmentStream().collect(toList());
 			BsonDocument container = lookup(whole, containerSegments);
 			BsonDocument value = entry.getValue();
+
+			// The container should already have an entry. We'll be replacing it,
+			// and this does not affect the order of the entries.
 			container.put(path.lastSegment(), value);
 		}
 
