@@ -3,6 +3,7 @@ package io.vena.bosk.drivers.mongo;
 import io.vena.bosk.Bosk;
 import io.vena.bosk.Catalog;
 import io.vena.bosk.CatalogReference;
+import io.vena.bosk.Identifier;
 import io.vena.bosk.Path;
 import io.vena.bosk.Reference;
 import io.vena.bosk.drivers.AbstractDriverTest;
@@ -44,12 +45,13 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	@Test
 	void test() throws InvalidTypeException {
 		CatalogReference<TestEntity> catalogRef = bosk.catalogReference(TestEntity.class, Path.just("catalog"));
-		CatalogReference<TestEntity> nestedCatalogRef = bosk.catalogReference(TestEntity.class, Path.of("catalog", "entity1", "catalog"));
+		CatalogReference<TestEntity> nestedCatalogRef = bosk.catalogReference(TestEntity.class, Path.of("catalog", "-entity-", "catalog"));
 		List<CatalogReference<?>> separateCollections = Arrays.asList(
 			catalogRef, nestedCatalogRef
 		);
 		makeCatalog(catalogRef);
-		makeCatalog(nestedCatalogRef);
+		makeCatalog(nestedCatalogRef.boundTo(Identifier.from("entity1")));
+		makeCatalog(nestedCatalogRef.boundTo(Identifier.from("entity2")));
 
 		BsonDocument entireDoc;
 		try (var __ = bosk.readContext()) {
@@ -86,19 +88,33 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 			.sorted(comparing((Reference<?> ref) -> ref.path().length()).reversed())
 			.collect(toList());
 		BsonDocument parts = new BsonDocument();
-		for (Reference<?> separateCollectionRef: separateCollections) {
-			ArrayList<String> segments = dottedFieldNameSegments(separateCollectionRef, bosk.rootReference());
-			BsonDocument docToSeparate = lookup(docToScatter, segments.subList(1, segments.size()));
-			for (Map.Entry<String, BsonValue> entry: docToSeparate.entrySet()) {
-				parts.put(separateCollectionRef.path().then(entry.getKey()).urlEncoded(), entry.getValue());
-				entry.setValue(BsonBoolean.TRUE);
-			}
+		for (Reference<?> collectionRef: separateCollections) {
+			scatterOneCollection(collectionRef, docToScatter, parts);
 		}
 
 		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
 		parts.put(Path.empty().urlEncoded(), docToScatter);
 
 		return parts;
+	}
+
+	private void scatterOneCollection(Reference<?> collectionRef, BsonDocument docToScatter, BsonDocument parts) {
+		Path path = collectionRef.path();
+		ArrayList<String> segments = dottedFieldNameSegments(collectionRef, bosk.rootReference());
+		if (path.numParameters() == 0) {
+			BsonDocument docToSeparate = lookup(docToScatter, segments.subList(1, segments.size()));
+			for (Map.Entry<String, BsonValue> entry: docToSeparate.entrySet()) {
+				parts.put(path.then(entry.getKey()).urlEncoded(), entry.getValue());
+				entry.setValue(BsonBoolean.TRUE);
+			}
+		} else {
+			// Loop through all possible values of the first parameter and recurse
+			int fpi = path.firstParameterIndex();
+			BsonDocument catalogDoc = lookup(docToScatter, segments.subList(1, fpi+1));
+			catalogDoc.forEach((id, value) -> {
+				scatterOneCollection(collectionRef.boundTo(Identifier.from(id)), docToScatter, parts);
+			});
+		}
 	}
 
 	private static BsonDocument lookup(BsonDocument entireDoc, List<String> segments) {
