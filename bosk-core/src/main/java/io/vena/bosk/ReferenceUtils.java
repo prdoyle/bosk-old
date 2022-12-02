@@ -66,6 +66,7 @@ public final class ReferenceUtils {
 		@Override public <U extends Entity> ListingReference<U> thenListing(Class<U> entryClass, String... segments) throws InvalidTypeException { return ref.thenListing(entryClass, segments); }
 		@Override public <U extends Entity, W> SideTableReference<U, W> thenSideTable(Class<U> keyClass, Class<W> valueClass, String... segments) throws InvalidTypeException { return ref.thenSideTable(keyClass, valueClass, segments); }
 		@Override public <TT> Reference<Reference<TT>> thenReference(Class<TT> targetClass, String... segments) throws InvalidTypeException { return ref.thenReference(targetClass, segments); }
+		@Override public <TT> Reference<TT> truncatedTo(Class<TT> targetClass, int remainingSegments) throws InvalidTypeException { return ref.truncatedTo(targetClass, remainingSegments); }
 		@Override public <TT> Reference<TT> enclosingReference(Class<TT> targetClass) throws InvalidTypeException { return ref.enclosingReference(targetClass); }
 
 		@Override public String toString() { return ref.toString(); }
@@ -100,6 +101,7 @@ public final class ReferenceUtils {
 		@Override public <U extends Entity> ListingReference<U> thenListing(Class<U> entryClass, String... segments) throws InvalidTypeException { return ref.thenListing(entryClass, segments); }
 		@Override public <U extends Entity, W> SideTableReference<U, W> thenSideTable(Class<U> keyClass, Class<W> valueClass, String... segments) throws InvalidTypeException { return ref.thenSideTable(keyClass, valueClass, segments); }
 		@Override public <TT> Reference<Reference<TT>> thenReference(Class<TT> targetClass, String... segments) throws InvalidTypeException { return ref.thenReference(targetClass, segments); }
+		@Override public <TT> Reference<TT> truncatedTo(Class<TT> targetClass, int remainingSegments) throws InvalidTypeException { return ref.truncatedTo(targetClass, remainingSegments); }
 		@Override public <TT> Reference<TT> enclosingReference(Class<TT> targetClass) throws InvalidTypeException { return ref.enclosingReference(targetClass); }
 
 		@Override public String toString() { return ref.toString(); }
@@ -138,6 +140,7 @@ public final class ReferenceUtils {
 		@Override public <U extends Entity> ListingReference<U> thenListing(Class<U> entryClass, String... segments) throws InvalidTypeException { return ref.thenListing(entryClass, segments); }
 		@Override public <U extends Entity,W> SideTableReference<U,W> thenSideTable(Class<U> keyClass, Class<W> valueClass, String... segments) throws InvalidTypeException { return ref.thenSideTable(keyClass, valueClass, segments); }
 		@Override public <TT> Reference<Reference<TT>> thenReference(Class<TT> targetClass, String... segments) throws InvalidTypeException { return ref.thenReference(targetClass, segments); }
+		@Override public <TT> Reference<TT> truncatedTo(Class<TT> targetClass, int remainingSegments) throws InvalidTypeException { return ref.truncatedTo(targetClass, remainingSegments); }
 		@Override public <TT> Reference<TT> enclosingReference(Class<TT> targetClass) throws InvalidTypeException { return ref.enclosingReference(targetClass); }
 
 		@Override public boolean equals(Object obj) {
