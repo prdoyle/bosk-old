@@ -9,12 +9,11 @@ import io.vena.bosk.drivers.AbstractDriverTest;
 import io.vena.bosk.drivers.state.TestEntity;
 import io.vena.bosk.exceptions.InvalidTypeException;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import lombok.var;
 import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
@@ -41,35 +40,43 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 
 	@Test
 	void test() throws InvalidTypeException {
-		CatalogReference<TestEntity> separateCollectionRef = bosk.catalogReference(TestEntity.class,
-			Path.just("catalog"));
-		makeCatalog(separateCollectionRef);
+		CatalogReference<TestEntity> catalogRef = bosk.catalogReference(TestEntity.class, Path.just("catalog"));
+		List<Reference<?>> separateCollections = Arrays.asList(
+			catalogRef,
+			bosk.sideTableReference(TestEntity.class, TestEntity.class, Path.just("sideTable"))
+		);
+		makeCatalog(catalogRef);
 
 		BsonDocument entireDoc;
 		try (var __ = bosk.readContext()) {
 			entireDoc = (BsonDocument) formatter.object2bsonValue(bosk.rootReference().value(), bosk.rootReference().targetType());
 		}
 
-		Map<Path, BsonDocument> parts = scatter(separateCollectionRef, entireDoc);
+		Map<Path, BsonValue> parts = scatter(separateCollections, entireDoc);
 		BsonDocument gathered = gather(parts);
 
 		assertEquals(entireDoc, gathered);
 
-		gathered.forEach((path, value) -> {
+		parts.forEach((path, value) -> {
 			System.out.println(" Path: " + path);
 			System.out.println("Value: " + value);
 		});
 	}
 
 	@NotNull
-	private Map<Path, BsonDocument> scatter(Reference<?> separateCollectionRef, BsonDocument entireDoc) {
+	private Map<Path, BsonValue> scatter(Collection<Reference<?>> separateCollectionsArg, BsonDocument entireDoc) {
+		List<Reference<?>> separateCollections = separateCollectionsArg.stream()
+			.sorted(comparing((Reference<?> ref) -> ref.path().length()).reversed())
+			.collect(toList());
 		BsonDocument docUnderConstruction = entireDoc.clone();
-		Map<Path, BsonDocument> parts = new HashMap<>();
-		ArrayList<String> segments = dottedFieldNameSegments(separateCollectionRef, bosk.rootReference());
-		BsonDocument docToSeparate = lookup(docUnderConstruction, segments.subList(1, segments.size()));
-		for (Map.Entry<String, BsonValue> entry: docToSeparate.entrySet()) {
-			parts.put(separateCollectionRef.path().then(entry.getKey()), (BsonDocument) entry.getValue());
-			entry.setValue(BsonBoolean.TRUE);
+		Map<Path, BsonValue> parts = new HashMap<>();
+		for (Reference<?> separateCollectionRef: separateCollections) {
+			ArrayList<String> segments = dottedFieldNameSegments(separateCollectionRef, bosk.rootReference());
+			BsonDocument docToSeparate = lookup(docUnderConstruction, segments.subList(1, segments.size()));
+			for (Map.Entry<String, BsonValue> entry: docToSeparate.entrySet()) {
+				parts.put(separateCollectionRef.path().then(entry.getKey()), entry.getValue());
+				entry.setValue(BsonBoolean.TRUE);
+			}
 		}
 
 		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
@@ -86,8 +93,8 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 		return result;
 	}
 
-	private BsonDocument gather(Map<Path, BsonDocument> parts) {
-		BsonDocument whole = parts.get(Path.empty());
+	private BsonDocument gather(Map<Path, BsonValue> parts) {
+		BsonDocument whole = (BsonDocument) parts.get(Path.empty());
 
 		// Sorting by path length ensures we gather parents before children.
 		// (Sorting lexicographically might be better for cache locality.)
@@ -102,7 +109,7 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 			}
 			List<String> containerSegments = path.truncatedBy(1).segmentStream().collect(toList());
 			BsonDocument container = lookup(whole, containerSegments);
-			BsonDocument value = entry.getValue();
+			BsonValue value = entry.getValue();
 
 			// The container should already have an entry. We'll be replacing it,
 			// and this does not affect the order of the entries.
