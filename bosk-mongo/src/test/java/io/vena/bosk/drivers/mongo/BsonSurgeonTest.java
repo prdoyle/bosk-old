@@ -166,6 +166,8 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	private BsonDocument gather(List<BsonDocument> partsList) {
 		// Sorting by path length ensures we gather parents before children.
 		// (Sorting lexicographically might be better for cache locality.)
+		// Because sort is stable, the order of children for any given parent is unaltered,
+		// since their bsonPaths all have the same number of segments.
 		partsList.sort(comparing(doc -> doc.getArray("bsonPath").size()));
 
 		BsonDocument rootRecipe = partsList.get(0);
@@ -176,13 +178,13 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 		BsonDocument whole = rootRecipe.getDocument("state");
 		for (var entry: partsList.subList(1, partsList.size())) {
 			List<String> bsonSegments = entry.getArray("bsonPath").stream().map(segment -> ((BsonString)segment).getValue()).collect(toList());
-			BsonDocument container = lookup(whole, bsonSegments.subList(0, bsonSegments.size() - 1));
+			String key = bsonSegments.get(bsonSegments.size()-1);
 			BsonValue value = entry.get("state");
 
 			// The container should already have an entry. We'll be replacing it,
 			// and this does not affect the order of the entries.
-			String lastSegment = bsonSegments.get(bsonSegments.size()-1);
-			container.put(lastSegment, value);
+			BsonDocument container = lookup(whole, bsonSegments.subList(0, bsonSegments.size() - 1));
+			container.put(key, value);
 		}
 
 		return whole;
