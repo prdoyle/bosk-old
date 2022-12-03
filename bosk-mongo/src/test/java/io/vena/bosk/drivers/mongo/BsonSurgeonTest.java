@@ -31,15 +31,11 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	Formatter formatter;
 
 	@BeforeEach
-	void setup() {
-		surgeon = new BsonSurgeon();
+	void setup() throws InvalidTypeException {
 		setupBosksAndReferences(Bosk::simpleDriver);
 		bsonPlugin = new BsonPlugin();
 		formatter = new Formatter(bosk, bsonPlugin);
-	}
 
-	@Test
-	void test() throws InvalidTypeException {
 		CatalogReference<TestEntity> catalogRef = bosk.catalogReference(TestEntity.class, Path.just("catalog"));
 		SideTableReference<TestEntity, TestEntity> sideTableRef = bosk.sideTableReference(TestEntity.class, TestEntity.class, Path.just("sideTable"));
 		CatalogReference<TestEntity> nestedCatalogRef = bosk.catalogReference(TestEntity.class, Path.of("catalog", "-entity-", "catalog"));
@@ -52,13 +48,18 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 		makeCatalog(nestedCatalogRef.boundTo(Identifier.from("entity1")));
 		makeCatalog(nestedCatalogRef.boundTo(Identifier.from("entity2")));
 		driver.submitReplacement(sideTableRef.then(Identifier.from("child1")), TestEntity.empty(Identifier.from("sideTableValue"), catalogRef));
+		surgeon = new BsonSurgeon(separateCollections);
+	}
+
+	@Test
+	void test() {
 
 		BsonDocument entireDoc;
 		try (var __ = bosk.readContext()) {
 			entireDoc = (BsonDocument) formatter.object2bsonValue(bosk.rootReference().value(), bosk.rootReference().targetType());
 		}
 
-		List<BsonDocument> parts = surgeon.scatter(separateCollections, entireDoc.clone());
+		List<BsonDocument> parts = surgeon.scatter(entireDoc.clone());
 		List<BsonDocument> receivedParts = parts.stream()
 			.map(part -> Document.parse(part.toJson()).toBsonDocument(BsonDocument.class, new CodecRegistry() {
 			// Holy shit, this is awkward
@@ -74,9 +75,8 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 		JsonWriterSettings jsonWriterSettings = JsonWriterSettings.builder().indent(true).build();
 
 		System.out.println("== Parts ==");
-		parts.forEach(part -> {
-			System.out.println(part.toJson(jsonWriterSettings));
-		});
+		parts.forEach(part ->
+			System.out.println(part.toJson(jsonWriterSettings)));
 		System.out.println("== Gathered ==");
 		System.out.println(gathered.toJson(jsonWriterSettings));
 	}

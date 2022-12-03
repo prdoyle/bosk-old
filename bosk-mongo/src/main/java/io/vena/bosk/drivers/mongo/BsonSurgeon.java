@@ -5,7 +5,6 @@ import io.vena.bosk.Identifier;
 import io.vena.bosk.Path;
 import io.vena.bosk.Reference;
 import io.vena.bosk.exceptions.InvalidTypeException;
-import io.vena.bosk.exceptions.NotYetImplementedException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -22,20 +21,42 @@ import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 
 class BsonSurgeon {
+	final Reference<?> rootRef;
+	final List<Reference<?>> separateCollectionEntryRefs;
+
+	BsonSurgeon(List<Reference<? extends EnumerableByIdentifier<?>>> separateCollections) {
+		separateCollectionEntryRefs = new ArrayList<>(separateCollections.size());
+		separateCollections.stream()
+			// Scatter bottom-up so we don't have to worry about scattering already-scattered documents
+			.sorted(comparing((Reference<?> ref) -> ref.path().length()).reversed())
+			.forEach(containerRef -> {
+				try {
+					separateCollectionEntryRefs.add(containerRef.then(Object.class, "entryPlaceholder"));
+				} catch (InvalidTypeException e) {
+					throw new IllegalArgumentException("Error constructing entry reference from \"" + containerRef + "\"", e);
+				}
+			});
+		if (separateCollectionEntryRefs.isEmpty()) {
+			// rootRef is never used in this case anyway
+			rootRef = null;
+		} else {
+			try {
+				rootRef = separateCollectionEntryRefs.get(0).truncatedTo(Object.class, 0);
+			} catch (InvalidTypeException e) {
+				throw new AssertionError("Inconceivable!", e);
+			}
+		}
+	}
+
 	/**
 	 * For efficiency, this modifies <code>docToScatter</code> in-place.
 	 *
 	 * @param docToScatter will be modified!
 	 */
-	public List<BsonDocument> scatter(List<Reference<? extends EnumerableByIdentifier<?>>> separateCollectionsArg, BsonDocument docToScatter) {
-		// Scatter bottom-up so we don't have to worry about scattering already-scattered documents
-		List<Reference<?>> separateCollections = separateCollectionsArg.stream()
-			.sorted(comparing((Reference<?> ref) -> ref.path().length()).reversed())
-			.collect(toList());
-
+	public List<BsonDocument> scatter(BsonDocument docToScatter) {
 		List<BsonDocument> parts = new ArrayList<>();
-		for (Reference<?> collectionRef: separateCollections) {
-			scatterOneCollection(collectionRef, docToScatter, parts);
+		for (Reference<?> entryRef: separateCollectionEntryRefs) {
+			scatterOneCollection(entryRef, docToScatter, parts);
 		}
 
 		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
@@ -44,15 +65,10 @@ class BsonSurgeon {
 		return parts;
 	}
 
-	private void scatterOneCollection(Reference<?> collectionRef, BsonDocument docToScatter, List<BsonDocument> parts) {
+	private void scatterOneCollection(Reference<?> entryRef, BsonDocument docToScatter, List<BsonDocument> parts) {
 		ArrayList<String> segments;
-		try {
-			Reference<Object> entryRef = collectionRef.then(Object.class, "-id-");
-			segments = dottedFieldNameSegments(entryRef, collectionRef.truncatedTo(Object.class, 0));
-		} catch (InvalidTypeException e) {
-			throw new NotYetImplementedException(e);
-		}
-		Path path = collectionRef.path();
+		segments = dottedFieldNameSegments(entryRef, rootRef);
+		Path path = entryRef.path();
 		if (path.numParameters() == 0) {
 			List<String> containingDocSegments = segments.subList(1, segments.size() - 1);
 			BsonArray containingDocBsonPath = new BsonArray(containingDocSegments.stream().map(BsonString::new).collect(toList()));
@@ -68,7 +84,7 @@ class BsonSurgeon {
 			int fpi = path.firstParameterIndex();
 			BsonDocument catalogDoc = lookup(docToScatter, segments.subList(1, fpi + 1));
 			catalogDoc.forEach((id, value) ->
-				scatterOneCollection(collectionRef.boundTo(Identifier.from(id)), docToScatter, parts));
+				scatterOneCollection(entryRef.boundTo(Identifier.from(id)), docToScatter, parts));
 		}
 	}
 
