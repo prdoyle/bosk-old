@@ -257,6 +257,12 @@ public abstract class Path implements Iterable<String> {
 	public abstract int numParameters();
 	public abstract int firstParameterIndex();
 
+	/**
+	 * @return a suffix string which, when appended to <code>prefixString</code>,
+	 * produces a parameter name distinct from all parameter names of this path.
+	 */
+	public abstract String distinctParameterSuffix(String prefixString);
+
 	@Override
 	public final String toString() {
 		return urlEncoded();
@@ -443,6 +449,16 @@ public abstract class Path implements Iterable<String> {
 		}
 
 		@Override
+		public String distinctParameterSuffix(String prefixString) {
+			String suggestion = prefix.distinctParameterSuffix(prefixString);
+			if (isParameterSegment(segment) && parameterNameFromSegment(segment).equals(prefixString + suggestion)) {
+				return suggestion + "_";
+			} else {
+				return suggestion;
+			}
+		}
+
+		@Override
 		public Path boundBy(BindingEnvironment bindings) {
 			Path newPrefix = prefix.boundBy(bindings);
 			if (isParameterSegment(segment)) {
@@ -525,6 +541,11 @@ public abstract class Path implements Iterable<String> {
 		@Override
 		public int firstParameterIndex() {
 			throw new IllegalArgumentException("Path has no parameters");
+		}
+
+		@Override
+		public String distinctParameterSuffix(String prefixString) {
+			return "";
 		}
 
 		@Override
