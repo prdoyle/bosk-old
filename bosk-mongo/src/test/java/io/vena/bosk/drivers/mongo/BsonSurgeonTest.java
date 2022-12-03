@@ -20,6 +20,7 @@ import lombok.var;
 import org.bson.BsonArray;
 import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
+import org.bson.BsonInvalidOperationException;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.bson.Document;
@@ -93,6 +94,9 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 		parts2.forEach(part -> {
 			System.out.println(part.toJson(jsonWriterSettings));
 		});
+		BsonDocument gathered2 = gather2(parts2);
+		System.out.println("== Gathered2 ==");
+		System.out.println(gathered2.toJson(jsonWriterSettings));
 	}
 
 	/**
@@ -199,7 +203,11 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	private static BsonDocument lookup(BsonDocument entireDoc, List<String> segments) {
 		BsonDocument result = entireDoc;
 		for (String segment: segments) {
-			result = result.getDocument(segment);
+			try {
+				result = result.getDocument(segment);
+			} catch (BsonInvalidOperationException e) {
+				throw new IllegalArgumentException("Doc does not contain " + segments, e);
+			}
 		}
 		return result;
 	}
@@ -237,6 +245,36 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 			// The container should already have an entry. We'll be replacing it,
 			// and this does not affect the order of the entries.
 			container.put(path.lastSegment(), value);
+		}
+
+		return whole;
+	}
+
+	/**
+	 * For efficiency, this modifies <code>partsList</code> in-place.
+	 *
+	 * @param partsList will be modified!
+	 */
+	private BsonDocument gather2(List<BsonDocument> partsList) {
+		// Sorting by path length ensures we gather parents before children.
+		// (Sorting lexicographically might be better for cache locality.)
+		partsList.sort(comparing(doc -> doc.getArray("bsonPath").size()));
+
+		BsonDocument rootRecipe = partsList.get(0);
+		if (!rootRecipe.getArray("bsonPath").isEmpty()) {
+			throw new IllegalArgumentException("No root recipe");
+		}
+
+		BsonDocument whole = rootRecipe.getDocument("state");
+		for (var entry: partsList.subList(1, partsList.size())) {
+			List<String> bsonSegments = entry.getArray("bsonPath").stream().map(segment -> ((BsonString)segment).getValue()).collect(toList());
+			BsonDocument container = lookup(whole, bsonSegments.subList(0, bsonSegments.size() - 1));
+			BsonValue value = entry.get("state");
+
+			// The container should already have an entry. We'll be replacing it,
+			// and this does not affect the order of the entries.
+			String lastSegment = bsonSegments.get(bsonSegments.size()-1);
+			container.put(lastSegment, value);
 		}
 
 		return whole;
