@@ -53,13 +53,12 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 
 	@Test
 	void test() {
-
 		BsonDocument entireDoc;
 		try (var __ = bosk.readContext()) {
 			entireDoc = (BsonDocument) formatter.object2bsonValue(bosk.rootReference().value(), bosk.rootReference().targetType());
 		}
 
-		List<BsonDocument> parts = surgeon.scatter(entireDoc.clone());
+		List<BsonDocument> parts = surgeon.scatter(bosk.rootReference(), entireDoc.clone());
 		List<BsonDocument> receivedParts = parts.stream()
 			.map(part -> Document.parse(part.toJson()).toBsonDocument(BsonDocument.class, new CodecRegistry() {
 			// Holy shit, this is awkward

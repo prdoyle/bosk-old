@@ -21,7 +21,6 @@ import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 
 class BsonSurgeon {
-	final Reference<?> rootRef;
 	final List<Reference<?>> separateCollectionEntryRefs;
 
 	BsonSurgeon(List<Reference<? extends EnumerableByIdentifier<?>>> separateCollections) {
@@ -36,27 +35,18 @@ class BsonSurgeon {
 					throw new IllegalArgumentException("Error constructing entry reference from \"" + containerRef + "\"", e);
 				}
 			});
-		if (separateCollectionEntryRefs.isEmpty()) {
-			// rootRef is never used in this case anyway
-			rootRef = null;
-		} else {
-			try {
-				rootRef = separateCollectionEntryRefs.get(0).truncatedTo(Object.class, 0);
-			} catch (InvalidTypeException e) {
-				throw new AssertionError("Inconceivable!", e);
-			}
-		}
 	}
 
 	/**
 	 * For efficiency, this modifies <code>docToScatter</code> in-place.
 	 *
+	 * @param mainRef the bosk node corresponding to <code>docToScatter</code>
 	 * @param docToScatter will be modified!
 	 */
-	public List<BsonDocument> scatter(BsonDocument docToScatter) {
+	public List<BsonDocument> scatter(Reference<?> mainRef, BsonDocument docToScatter) {
 		List<BsonDocument> parts = new ArrayList<>();
 		for (Reference<?> entryRef: separateCollectionEntryRefs) {
-			scatterOneCollection(entryRef, docToScatter, parts);
+			scatterOneCollection(mainRef, entryRef, docToScatter, parts);
 		}
 
 		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
@@ -65,9 +55,9 @@ class BsonSurgeon {
 		return parts;
 	}
 
-	private void scatterOneCollection(Reference<?> entryRef, BsonDocument docToScatter, List<BsonDocument> parts) {
+	private void scatterOneCollection(Reference<?> mainRef, Reference<?> entryRef, BsonDocument docToScatter, List<BsonDocument> parts) {
 		ArrayList<String> segments;
-		segments = dottedFieldNameSegments(entryRef, rootRef);
+		segments = dottedFieldNameSegments(entryRef, mainRef);
 		Path path = entryRef.path();
 		if (path.numParameters() == 0) {
 			List<String> containingDocSegments = segments.subList(1, segments.size() - 1);
@@ -84,7 +74,7 @@ class BsonSurgeon {
 			int fpi = path.firstParameterIndex();
 			BsonDocument catalogDoc = lookup(docToScatter, segments.subList(1, fpi + 1));
 			catalogDoc.forEach((id, value) ->
-				scatterOneCollection(entryRef.boundTo(Identifier.from(id)), docToScatter, parts));
+				scatterOneCollection(mainRef, entryRef.boundTo(Identifier.from(id)), docToScatter, parts));
 		}
 	}
 
