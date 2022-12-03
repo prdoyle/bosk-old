@@ -52,13 +52,19 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	}
 
 	@Test
-	void test() {
+	void test() throws InvalidTypeException {
+//		doTest(bosk.rootReference());
+//		doTest(bosk.reference(TestEntity.class, Path.parse("/catalog/entity1")));
+		doTest(bosk.sideTableReference(TestEntity.class, TestEntity.class, Path.parse("/sideTable")));
+	}
+
+	private void doTest(Reference<?> mainRef) {
 		BsonDocument entireDoc;
 		try (var __ = bosk.readContext()) {
-			entireDoc = (BsonDocument) formatter.object2bsonValue(bosk.rootReference().value(), bosk.rootReference().targetType());
+			entireDoc = (BsonDocument) formatter.object2bsonValue(mainRef.value(), mainRef.targetType());
 		}
 
-		List<BsonDocument> parts = surgeon.scatter(bosk.rootReference(), entireDoc.clone());
+		List<BsonDocument> parts = surgeon.scatter(mainRef, entireDoc.clone());
 		List<BsonDocument> receivedParts = parts.stream()
 			.map(part -> Document.parse(part.toJson()).toBsonDocument(BsonDocument.class, new CodecRegistry() {
 			// Holy shit, this is awkward

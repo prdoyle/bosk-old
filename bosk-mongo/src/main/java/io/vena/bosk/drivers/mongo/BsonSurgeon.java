@@ -29,8 +29,9 @@ class BsonSurgeon {
 			// Scatter bottom-up so we don't have to worry about scattering already-scattered documents
 			.sorted(comparing((Reference<?> ref) -> ref.path().length()).reversed())
 			.forEach(containerRef -> {
+				// Compute a unique placeholder
 				try {
-					separateCollectionEntryRefs.add(containerRef.then(Object.class, "entryPlaceholder"));
+					separateCollectionEntryRefs.add(containerRef.then(Object.class, "-SURGEON_PLACEHOLDER-"));
 				} catch (InvalidTypeException e) {
 					throw new IllegalArgumentException("Error constructing entry reference from \"" + containerRef + "\"", e);
 				}
@@ -55,11 +56,19 @@ class BsonSurgeon {
 		return parts;
 	}
 
-	private void scatterOneCollection(Reference<?> mainRef, Reference<?> entryRef, BsonDocument docToScatter, List<BsonDocument> parts) {
-		ArrayList<String> segments;
-		segments = dottedFieldNameSegments(entryRef, mainRef);
+	private void scatterOneCollection(Reference<?> mainRef, Reference<?> entryRefArg, BsonDocument docToScatter, List<BsonDocument> parts) {
+		// Only continue if entryRefArg could to a proper descendant node of mainRef
+		if (entryRefArg.path().length() <= mainRef.path().length()) {
+			return;
+		} else if (!mainRef.path().matches(entryRefArg.path().truncatedTo(mainRef.path().length()))) {
+			return;
+		}
+
+		Reference<?> entryRef = entryRefArg.boundBy(mainRef.path());
+		ArrayList<String> segments = dottedFieldNameSegments(entryRef, mainRef);
 		Path path = entryRef.path();
-		if (path.numParameters() == 0) {
+		assert path.numParameters() >= 1: "entryRefArg is supposed to be an indefinite reference to an entry";
+		if (path.numParameters() == 1) {
 			List<String> containingDocSegments = segments.subList(1, segments.size() - 1);
 			BsonArray containingDocBsonPath = new BsonArray(containingDocSegments.stream().map(BsonString::new).collect(toList()));
 			BsonDocument docToSeparate = lookup(docToScatter, containingDocSegments);
