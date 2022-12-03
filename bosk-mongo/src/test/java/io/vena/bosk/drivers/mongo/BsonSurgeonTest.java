@@ -3,15 +3,17 @@ package io.vena.bosk.drivers.mongo;
 import io.vena.bosk.Bosk;
 import io.vena.bosk.Catalog;
 import io.vena.bosk.CatalogReference;
+import io.vena.bosk.EnumerableByIdentifier;
 import io.vena.bosk.Identifier;
 import io.vena.bosk.Path;
 import io.vena.bosk.Reference;
+import io.vena.bosk.SideTableReference;
 import io.vena.bosk.drivers.AbstractDriverTest;
 import io.vena.bosk.drivers.state.TestEntity;
 import io.vena.bosk.exceptions.InvalidTypeException;
+import io.vena.bosk.exceptions.NotYetImplementedException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import lombok.var;
@@ -45,13 +47,17 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	@Test
 	void test() throws InvalidTypeException {
 		CatalogReference<TestEntity> catalogRef = bosk.catalogReference(TestEntity.class, Path.just("catalog"));
+		SideTableReference<TestEntity, TestEntity> sideTableRef = bosk.sideTableReference(TestEntity.class, TestEntity.class, Path.just("sideTable"));
 		CatalogReference<TestEntity> nestedCatalogRef = bosk.catalogReference(TestEntity.class, Path.of("catalog", "-entity-", "catalog"));
-		List<CatalogReference<?>> separateCollections = Arrays.asList(
-			catalogRef, nestedCatalogRef
+		List<Reference<? extends EnumerableByIdentifier<?>>> separateCollections = Arrays.asList(
+			catalogRef,
+			sideTableRef,
+			nestedCatalogRef
 		);
 		makeCatalog(catalogRef);
 		makeCatalog(nestedCatalogRef.boundTo(Identifier.from("entity1")));
 		makeCatalog(nestedCatalogRef.boundTo(Identifier.from("entity2")));
+		driver.submitReplacement(sideTableRef.then(Identifier.from("child1")), TestEntity.empty(Identifier.from("sideTableValue"), catalogRef));
 
 		BsonDocument entireDoc;
 		try (var __ = bosk.readContext()) {
@@ -66,7 +72,7 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 				return (Codec<T>) formatter.codecFor(clazz);
 			}
 		});
-		BsonDocument gathered = gather(receivedParts);
+		BsonDocument gathered = gather(receivedParts, bosk.rootReference());
 
 		assertEquals(entireDoc, gathered);
 
@@ -80,10 +86,12 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	}
 
 	/**
+	 * For efficiency, this modifies <code>docToScatter</code> in-place.
+	 *
 	 * @param docToScatter will be modified!
 	 */
 	@NotNull
-	private BsonDocument scatter(Collection<? extends Reference<Catalog<?>>> separateCollectionsArg, BsonDocument docToScatter) {
+	private BsonDocument scatter(List<Reference<? extends EnumerableByIdentifier<?>>> separateCollectionsArg, BsonDocument docToScatter) {
 		List<Reference<?>> separateCollections = separateCollectionsArg.stream()
 			.sorted(comparing((Reference<?> ref) -> ref.path().length()).reversed())
 			.collect(toList());
@@ -100,9 +108,14 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 
 	private void scatterOneCollection(Reference<?> collectionRef, BsonDocument docToScatter, BsonDocument parts) {
 		Path path = collectionRef.path();
-		ArrayList<String> segments = dottedFieldNameSegments(collectionRef, bosk.rootReference());
+		ArrayList<String> segments;
+		try {
+			segments = dottedFieldNameSegments(collectionRef.then(Object.class, "-id-"), bosk.rootReference());
+		} catch (InvalidTypeException e) {
+			throw new NotYetImplementedException(e);
+		}
 		if (path.numParameters() == 0) {
-			BsonDocument docToSeparate = lookup(docToScatter, segments.subList(1, segments.size()));
+			BsonDocument docToSeparate = lookup(docToScatter, segments.subList(1, segments.size()-1));
 			for (Map.Entry<String, BsonValue> entry: docToSeparate.entrySet()) {
 				parts.put(path.then(entry.getKey()).urlEncoded(), entry.getValue());
 				entry.setValue(BsonBoolean.TRUE);
@@ -126,9 +139,11 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	}
 
 	/**
+	 * For efficiency, this modifies <code>parts</code> in-place.
+	 *
 	 * @param parts will be modified!
 	 */
-	private BsonDocument gather(BsonDocument parts) {
+	private BsonDocument gather(BsonDocument parts, Reference<?> rootRef) {
 		BsonDocument whole = ((BsonDocument) parts.get(Path.empty().urlEncoded()));
 
 		// Sorting by path length ensures we gather parents before children.
@@ -142,9 +157,16 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 				// We're already merging everything into the main document. Skip the root entry.
 				continue;
 			}
-			List<String> containerSegments = path.truncatedBy(1).segmentStream().collect(toList());
-			BsonDocument container = lookup(whole, containerSegments);
-			BsonValue value = (BsonValue) entry.getValue();
+			String[] pathSegments = path.segmentStream().toArray(String[]::new);
+			Reference<?> ref;
+			try {
+				ref = rootRef.then(Object.class, pathSegments);
+			} catch (InvalidTypeException e) {
+				throw new NotYetImplementedException(e);
+			}
+			List<String> bsonSegments = dottedFieldNameSegments(ref, rootRef);
+			BsonDocument container = lookup(whole, bsonSegments.subList(1, bsonSegments.size() - 1));
+			BsonValue value = entry.getValue();
 
 			// The container should already have an entry. We'll be replacing it,
 			// and this does not affect the order of the entries.
