@@ -155,7 +155,7 @@ public abstract class AbstractBoskTest {
 		return new Bosk<TestRoot>("Test", TestRoot.class, AbstractRoundTripTest::initialRoot, driverFactory);
 	}
 
-	protected static TestRoot initialRoot(Bosk<TestRoot> bosk) {
+	protected static TestRoot initialRoot(Bosk<?> bosk) {
 		TestEntityBuilder teb;
 		try {
 			teb = new TestEntityBuilder(bosk);

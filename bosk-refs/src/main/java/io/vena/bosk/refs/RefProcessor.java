@@ -1,5 +1,7 @@
 package io.vena.bosk.refs;
 
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,6 +13,7 @@ import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
+import javax.tools.JavaFileObject;
 
 import static javax.lang.model.SourceVersion.RELEASE_8;
 
@@ -28,13 +31,33 @@ public class RefProcessor extends AbstractProcessor {
 					.add(element);
 			}
 		});
-		if (!fieldsByClass.isEmpty()) {
-			generateRefsClass(fieldsByClass);
-		}
+		generateRefsClasses(fieldsByClass);
 		return false;
 	}
 
-	private static void generateRefsClass(Map<TypeElement, List<Element>> fieldsByClass) {
-		System.out.println("RefProcessor: " + fieldsByClass);
+	private void generateRefsClasses(Map<TypeElement, List<Element>> fieldsByClass) {
+		fieldsByClass.forEach((enclosingType, elements) -> {
+			String qualifiedName = enclosingType.getQualifiedName() + "_Refs";
+			int lastDot = qualifiedName.lastIndexOf('.');
+			String packagePath = qualifiedName.substring(0, lastDot);
+			String className = qualifiedName.substring(lastDot+1);
+			try {
+				JavaFileObject refsFile = processingEnv.getFiler()
+					.createSourceFile(qualifiedName);
+				try (PrintWriter out = new PrintWriter(refsFile.openWriter())) {
+					out.println("package " + packagePath + ";");
+					out.println();
+
+					out.println("class " + className + " {");
+					for (Element element: elements) {
+
+					}
+					out.println("}");
+					out.println();
+				}
+			} catch (IOException e) {
+				throw new IllegalStateException(e);
+			}
+		});
 	}
 }

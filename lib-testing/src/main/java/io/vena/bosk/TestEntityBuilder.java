@@ -14,7 +14,7 @@ public class TestEntityBuilder {
 	private final CatalogReference<TestChild> anyChildren;
 	private final Reference<ImplicitRefs> anyImplicitRefs;
 
-	public TestEntityBuilder(Bosk<TestRoot> bosk) throws InvalidTypeException {
+	public TestEntityBuilder(Bosk<?> bosk) throws InvalidTypeException {
 		this.anyEntity = bosk.rootReference().then(TestEntity.class, TestRoot.Fields.entities, "-entity-");
 		this.anyChildren = anyEntity.thenCatalog(TestChild.class, TestEntity.Fields.children);
 		this.anyImplicitRefs = anyEntity.then(ImplicitRefs.class, TestEntity.Fields.implicitRefs);
