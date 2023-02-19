@@ -31,4 +31,9 @@
 		<Method name="flush"/>
 		<Bug pattern="SF_SWITCH_FALLTHROUGH"/>
 	</Match>
+	<Match>
+		<Class name="io.vena.bosk.drivers.mongo.MultiDocumentMongoDriver"/>
+		<Method name="flush"/>
+		<Bug pattern="SF_SWITCH_FALLTHROUGH"/>
+	</Match>
 </FindBugsFilter>
