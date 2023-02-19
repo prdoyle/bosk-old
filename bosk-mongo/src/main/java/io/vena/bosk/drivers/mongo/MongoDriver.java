@@ -39,9 +39,27 @@ public interface MongoDriver<R extends Entity> extends BoskDriver<R> {
 		MongoDriverSettings driverSettings,
 		BsonPlugin bsonPlugin
 	) {
+		/*
+		TODO: This isn't quite right.
+		Most importantly, the driver to use must be based on existing database contents if any,
+		and we must be able to switch dynamically if a refurbish switches the database format.
+		The configuration can specify a preference, like we do with the bosk initial state, but
+		if there's data in the database, we need to adapt to that.
+
+		Secondly, it's probably not a good idea to swap in an entirely different implementation
+		simply because there are zero separateCollections. That is a profound decision that, for example,
+		imposes a 16MB limit on the state tree. Users should opt in to the single-doc driver explicitly
+		(and again, the database contents take precedence over user preference).
+
+		What we're actually going to want to do, I think, is have MultiDocumentMongoDriver also handle
+		the single-document case (simply by configuring it to have no separate collections), and then
+		deprecate SingleDocumentMongoDriver and remove it.
+		 */
 		switch (driverSettings.separateCollections().size()) {
 			case 0:
 				return (b, d) -> new SingleDocumentMongoDriver<>(b, clientSettings, driverSettings, bsonPlugin, d);
+			case 1:
+				return (b, d) -> new MultiDocumentMongoDriver<>(b, clientSettings, driverSettings, bsonPlugin, d);
 			default:
 				throw new IllegalArgumentException("Cannot support " + driverSettings.separateCollections().size() + " separate collections");
 		}
