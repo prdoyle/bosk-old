@@ -16,7 +16,6 @@ import java.util.List;
 import lombok.var;
 import org.bson.BsonDocument;
 import org.bson.Document;
-import org.bson.codecs.Codec;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.json.JsonWriterSettings;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +28,7 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	BsonSurgeon surgeon;
 	BsonPlugin bsonPlugin;
 	Formatter formatter;
+	CodecRegistry codecRegistry;
 
 	@BeforeEach
 	void setup() throws InvalidTypeException {
@@ -66,13 +66,8 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 
 		List<BsonDocument> parts = surgeon.scatter(mainRef, entireDoc.clone());
 		List<BsonDocument> receivedParts = parts.stream()
-			.map(part -> Document.parse(part.toJson()).toBsonDocument(BsonDocument.class, new CodecRegistry() {
-			// Holy shit, this is awkward
-			@Override
-			public <T> Codec<T> get(Class<T> clazz) {
-				return (Codec<T>) formatter.codecFor(clazz);
-			}
-		})).collect(toList());
+			.map(part -> Document.parse(part.toJson()).toBsonDocument(BsonDocument.class, formatter.codecRegistry()))
+			.collect(toList());
 		BsonDocument gathered = surgeon.gather(receivedParts);
 
 		assertEquals(entireDoc, gathered);
