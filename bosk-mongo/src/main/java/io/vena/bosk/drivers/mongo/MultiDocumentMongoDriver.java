@@ -13,6 +13,7 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
+import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.result.UpdateResult;
 import io.vena.bosk.Bosk;
@@ -58,8 +59,9 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 	private final Formatter formatter;
 	private final MongoReceiver<R> receiver;
 	private final MongoClient mongoClient;
-	private final MongoCollection<Document> collection;
-	private final BsonString documentID;
+	private final MongoDatabase database;
+	private final MongoCollection<Document> mainCollection;
+	private final BsonString rootDocumentID;
 	private final Reference<R> rootRef;
 	private final String echoPrefix;
 	private final AtomicLong echoCounter = new AtomicLong(1_000_000_000_000L); // Start with a big number so the length doesn't change often
@@ -69,13 +71,12 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 		this.description = MultiDocumentMongoDriver.class.getSimpleName() + ": " + driverSettings;
 		this.settings = driverSettings;
 		this.mongoClient = MongoClients.create(clientSettings);
+		this.database = mongoClient.getDatabase(driverSettings.database());
+		this.mainCollection = database.getCollection(MAIN_COLLECTION_NAME);
+		this.rootDocumentID = new BsonString(ROOT_DOCUMENT_ID);
 		this.formatter = new Formatter(bosk, bsonPlugin);
-		this.collection = mongoClient
-			.getDatabase(driverSettings.database())
-			.getCollection(MAIN_COLLECTION_NAME);
-		this.receiver = new SingleDocumentMongoChangeStreamReceiver<>(downstream, bosk.rootReference(), collection, formatter, settings);
+		this.receiver = new MultiDocumentMongoChangeStreamReceiver<>(downstream, bosk.rootReference(), mainCollection, formatter, settings);
 		this.echoPrefix = bosk.instanceID().toString();
-		this.documentID = new BsonString(ROOT_DOCUMENT_ID);
 		this.rootRef = bosk.rootReference();
 	}
 
@@ -104,7 +105,7 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 
 		bumpRevision();
 
-		try (MongoCursor<Document> cursor = collection.find(documentFilter()).limit(1).cursor()) {
+		try (MongoCursor<Document> cursor = mainCollection.find(documentFilter()).limit(1).cursor()) {
 			Document newDocument = cursor.next();
 			Document newState = newDocument.get(state.name(), Document.class);
 			if (newState == null) {
@@ -213,7 +214,7 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 
 				Document documentFromDB;
 				Document stateFromDB;
-				try (MongoCursor<Document> cursor = collection.find(documentFilter()).limit(1).cursor()) {
+				try (MongoCursor<Document> cursor = mainCollection.find(documentFilter()).limit(1).cursor()) {
 					documentFromDB = cursor.next();
 					stateFromDB = documentFromDB.get(state.name(), Document.class);
 				} catch (NoSuchElementException e) {
@@ -231,7 +232,7 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 
 				// Start with a blank document so subsequent changes become update events instead of inserts
 				// TODO: should we do this for initialization too? We want those to be updates as well, right?
-				collection.replaceOne(documentFilter(), new Document());
+				mainCollection.replaceOne(documentFilter(), new Document());
 
 				// Set all the same fields we set on initialization
 				ensureDocumentExists(initialState, "$set");
@@ -259,7 +260,7 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 	//
 
 	private BsonDocument documentFilter() {
-		return new BsonDocument("_id", documentID);
+		return new BsonDocument("_id", rootDocumentID);
 	}
 
 	private <T> BsonDocument standardPreconditions(Reference<T> target) {
@@ -303,13 +304,13 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 		BsonDocument filter = documentFilter();
 		UpdateOptions options = new UpdateOptions();
 		options.upsert(true);
-		LOGGER.debug("** Initial tenant upsert for {}", documentID);
+		LOGGER.debug("** Initial tenant upsert for {}", rootDocumentID);
 		LOGGER.trace("| Filter: {}", filter);
 		LOGGER.trace("| Update: {}", update);
 		LOGGER.trace("| Options: {}", options);
 		UpdateResult result;
 		try {
-			result = collection.updateOne(filter, update, options);
+			result = mainCollection.updateOne(filter, update, options);
 		} catch (MongoWriteException e) {
 			if (DUPLICATE_KEY == ErrorCategory.fromErrorCode(e.getCode())) {
 				// This can happen in MongoDB 4.0 if two upserts occur in parallel.
@@ -318,7 +319,7 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 				// supported, we could presumably delete this code.
 				// https://www.mongodb.com/docs/manual/core/retryable-writes/#std-label-retryable-update-upsert
 				LOGGER.debug("| Retrying: {}", e.getMessage());
-				result = collection.updateOne(filter, update, options);
+				result = mainCollection.updateOne(filter, update, options);
 			} else {
 				throw e;
 			}
@@ -327,7 +328,7 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 	}
 
 	private BsonDocument initialDocument(BsonValue initialState) {
-		BsonDocument fieldValues = new BsonDocument("_id", documentID);
+		BsonDocument fieldValues = new BsonDocument("_id", rootDocumentID);
 		fieldValues.put(path.name(), new BsonString("/"));
 		fieldValues.put(state.name(), initialState);
 		fieldValues.put(echo.name(), new BsonString(uniqueEchoToken()));
@@ -351,7 +352,7 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 			}
 		}
 		LOGGER.debug("| Filter: {}", filter);
-		UpdateResult result = collection.updateOne(filter, updateDoc);
+		UpdateResult result = mainCollection.updateOne(filter, updateDoc);
 		LOGGER.debug("| Update result: {}", result);
 		if (result.wasAcknowledged()) {
 			assert result.getMatchedCount() <= 1;
@@ -391,7 +392,7 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 				new BsonString(echoToken)
 			));
 			LOGGER.debug("| Update: {}", updateDoc);
-			UpdateResult result = collection.updateOne(documentFilter(), updateDoc);
+			UpdateResult result = mainCollection.updateOne(documentFilter(), updateDoc);
 			if (result.getModifiedCount() == 0) {
 				LOGGER.debug("Document does not exist; echo succeeds trivially. Response: {}", result);
 				return;
@@ -430,8 +431,8 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 		return ROOT_DOCUMENT_ID;
 	}
 
-	private static final String MAIN_COLLECTION_NAME = "boskCollection";
-	private static final String ROOT_DOCUMENT_ID = "boskDocument";
+	private static final String MAIN_COLLECTION_NAME = "main";
+	private static final String ROOT_DOCUMENT_ID = "root";
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(MultiDocumentMongoDriver.class);
 }
