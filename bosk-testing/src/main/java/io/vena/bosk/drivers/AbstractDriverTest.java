@@ -38,7 +38,7 @@ public class AbstractDriverTest {
 		return TestEntity.empty(Identifier.from("root"), b.catalogReference(TestEntity.class, Path.just(TestEntity.Fields.catalog)));
 	}
 
-	TestEntity autoInitialize(Reference<TestEntity> ref) {
+	protected TestEntity autoInitialize(Reference<TestEntity> ref) {
 		if (ref.path().isEmpty()) {
 			// Root always exists; nothing to do
 			return null;
