@@ -52,7 +52,7 @@ import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.bson.BsonBoolean.FALSE;
 
-final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R> {
+final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>, MongoDriverDatabaseDetails {
 	private final String description;
 	private final MongoDriverSettings settings;
 	private final Formatter formatter;
@@ -64,8 +64,6 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 	private final String echoPrefix;
 	private final AtomicLong echoCounter = new AtomicLong(1_000_000_000_000L); // Start with a big number so the length doesn't change often
 
-	static final String COLLECTION_NAME = "boskCollection";
-
 	MultiDocumentMongoDriver(Bosk<R> bosk, MongoClientSettings clientSettings, MongoDriverSettings driverSettings, BsonPlugin bsonPlugin, BoskDriver<R> downstream) {
 		validateMongoClientSettings(clientSettings);
 		this.description = MultiDocumentMongoDriver.class.getSimpleName() + ": " + driverSettings;
@@ -74,10 +72,10 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 		this.formatter = new Formatter(bosk, bsonPlugin);
 		this.collection = mongoClient
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME);
+			.getCollection(MAIN_COLLECTION_NAME);
 		this.receiver = new SingleDocumentMongoChangeStreamReceiver<>(downstream, bosk.rootReference(), collection, formatter, settings);
 		this.echoPrefix = bosk.instanceID().toString();
-		this.documentID = new BsonString("boskDocument");
+		this.documentID = new BsonString(ROOT_DOCUMENT_ID);
 		this.rootRef = bosk.rootReference();
 	}
 
@@ -421,6 +419,19 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 		String tokenData;
 		@Override public String toString() { return tokenData; }
 	}
+
+	@Override
+	public String mainCollectionName() {
+		return MAIN_COLLECTION_NAME;
+	}
+
+	@Override
+	public String rootDocumentID() {
+		return ROOT_DOCUMENT_ID;
+	}
+
+	private static final String MAIN_COLLECTION_NAME = "boskCollection";
+	private static final String ROOT_DOCUMENT_ID = "boskDocument";
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(MultiDocumentMongoDriver.class);
 }

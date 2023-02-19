@@ -42,7 +42,6 @@ import org.junit.jupiter.api.BeforeEach;
 import static io.vena.bosk.ListingEntry.LISTING_ENTRY;
 import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.path;
 import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.revision;
-import static io.vena.bosk.drivers.mongo.SingleDocumentMongoDriver.COLLECTION_NAME;
 import static java.lang.Long.max;
 import static java.lang.System.currentTimeMillis;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -399,14 +398,18 @@ class MongoDriverSpecialTest implements TestParameters {
 			createDriverFactory()
 		);
 
+		MongoDriverDatabaseDetails details = (MongoDriverDatabaseDetails) initialBosk.driver();
+		String collectionName = details.mainCollectionName();
+		String documentID     = details.rootDocumentID();
+
 		// (Close this so it doesn't crash when we delete the "path" field)
 		((MongoDriver<TestEntity>)initialBosk.driver()).close();
 
 		// Delete some metadata fields
 		MongoCollection<Document> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
-			.getCollection(COLLECTION_NAME);
-		deleteFields(collection, path, revision);
+			.getCollection(collectionName);
+		deleteFields(collection, documentID, path, revision);
 
 		// Make the bosk whose refurbish operation we want to test
 		Bosk<TestEntity> bosk = new Bosk<TestEntity>(
@@ -423,10 +426,10 @@ class MongoDriverSpecialTest implements TestParameters {
 		// To test those, delete them again.
 		// This may cause the receiver to throw an exception for deleting this field unexpectedly,
 		// but it recovers, so that's ok.
-		deleteFields(collection, revision);
+		deleteFields(collection, documentID, revision);
 
 		// Verify that the fields are indeed gone
-		BsonDocument filterDoc = new BsonDocument("_id", new BsonString("boskDocument"));
+		BsonDocument filterDoc = new BsonDocument("_id", new BsonString(documentID));
 		try (MongoCursor<Document> cursor = collection.find(filterDoc).cursor()) {
 			Document doc = cursor.next();
 			assertNull(doc.get(path.name()));
@@ -445,12 +448,12 @@ class MongoDriverSpecialTest implements TestParameters {
 
 	}
 
-	private static void deleteFields(MongoCollection<Document> collection, DocumentFields... fields) {
+	private static void deleteFields(MongoCollection<Document> collection, String rootDocumentID, DocumentFields... fields) {
 		BsonDocument fieldsToUnset = new BsonDocument();
 		for (DocumentFields field: fields) {
 			fieldsToUnset.append(field.name(), new BsonNull()); // Value is ignored
 		}
-		BsonDocument filterDoc = new BsonDocument("_id", new BsonString("boskDocument"));
+		BsonDocument filterDoc = new BsonDocument("_id", new BsonString(rootDocumentID));
 		collection.updateOne(
 			filterDoc,
 			new BsonDocument("$unset", fieldsToUnset));

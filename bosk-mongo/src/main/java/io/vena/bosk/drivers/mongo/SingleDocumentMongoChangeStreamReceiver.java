@@ -41,6 +41,7 @@ import static com.mongodb.client.model.Projections.include;
 import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.revision;
 import static io.vena.bosk.drivers.mongo.Formatter.REVISION_ZERO;
 import static io.vena.bosk.drivers.mongo.Formatter.referenceTo;
+import static io.vena.bosk.drivers.mongo.SingleDocumentMongoDriver.DOCUMENT_ID;
 import static java.lang.String.format;
 import static java.lang.System.identityHashCode;
 import static java.lang.Thread.currentThread;
@@ -432,7 +433,7 @@ final class SingleDocumentMongoChangeStreamReceiver<R extends Entity> implements
 	}
 
 	private static final Set<String> ALREADY_WARNED = newSetFromMap(new ConcurrentHashMap<>());
-	private static final BsonDocument DOCUMENT_FILTER = new BsonDocument("_id", new BsonString("boskDocument"));
+	private static final BsonDocument DOCUMENT_FILTER = new BsonDocument("_id", new BsonString(DOCUMENT_ID));
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SingleDocumentMongoChangeStreamReceiver.class);
 
