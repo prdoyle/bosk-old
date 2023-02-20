@@ -81,7 +81,7 @@ class BsonSurgeon {
 		}
 
 		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
-		parts.add(createRecipe(docRef, new BsonArray(), document));
+		parts.add(createRecipe(docRef.path(), new BsonArray(), document));
 
 		return parts;
 	}
@@ -109,7 +109,7 @@ class BsonSurgeon {
 				BsonArray entryBsonPath = containingDocBsonPath.clone();
 				String entryID = entry.getKey();
 				entryBsonPath.add(new BsonString(entryID));
-				parts.add(createRecipe(entryRef(graftPoint.containerRef, entryID), entryBsonPath, entry.getValue()));
+				parts.add(createRecipe(graftPoint.containerRef.path().then(entryID), entryBsonPath, entry.getValue()));
 				entry.setValue(BsonBoolean.TRUE);
 			}
 		} else {
@@ -124,9 +124,14 @@ class BsonSurgeon {
 		}
 	}
 
-	private static BsonDocument createRecipe(Reference<?> docRef, BsonArray entryBsonPath, BsonValue entryState) {
+	/**
+	 * <code>entryPath</code> and <code>entryBsonPath</code> must correspond to each other.
+	 * They'll have the same segments, except where the BSON representation of a container actually contains its own
+	 * fields (as with {@link io.vena.bosk.SideTable}, in which case those fields will appear too.
+	 */
+	private static BsonDocument createRecipe(Path entryPath, BsonArray entryBsonPath, BsonValue entryState) {
 		return new BsonDocument()
-			.append("_id", new BsonString(docRef.path().urlEncoded()))
+			.append("_id", new BsonString(entryPath.urlEncoded()))
 			.append(BSON_PATH_FIELD, entryBsonPath)
 			.append(STATE_FIELD, entryState);
 	}
