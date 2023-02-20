@@ -8,6 +8,7 @@ import io.vena.bosk.exceptions.InvalidTypeException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import lombok.Value;
 import org.bson.BsonArray;
 import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
@@ -25,13 +26,13 @@ import static java.util.stream.Collectors.toList;
  * into pieces so they can stay under the MongoDB document size limit.
  */
 class BsonSurgeon {
-	final List<Reference<?>> separateCollectionEntryRefs;
+	final List<GraftPoint> graftPoints;
 
 	public static final String BSON_PATH_FIELD = Formatter.DocumentFields.bsonPath.name();
 	public static final String STATE_FIELD = Formatter.DocumentFields.state.name();
 
 	BsonSurgeon(List<Reference<? extends EnumerableByIdentifier<?>>> separateCollections) {
-		separateCollectionEntryRefs = new ArrayList<>(separateCollections.size());
+		this.graftPoints = new ArrayList<>(separateCollections.size());
 		separateCollections.stream()
 			// Scatter bottom-up so we don't have to worry about scattering already-scattered documents
 			.sorted(comparing((Reference<?> ref) -> ref.path().length()).reversed())
@@ -41,8 +42,12 @@ class BsonSurgeon {
 				// in the dotted name segment list. The actual ID we pick doesn't matter and will be ignored.
 				String surgeonPlaceholder = "SURGEON_PLACEHOLDER";
 
-				separateCollectionEntryRefs.add(entryRef(containerRef, surgeonPlaceholder));
+				this.graftPoints.add(graftPoint(containerRef, surgeonPlaceholder));
 			});
+	}
+
+	private static GraftPoint graftPoint(Reference<? extends EnumerableByIdentifier<?>> containerRef, String entryID) {
+		return new GraftPoint(entryRef(containerRef, entryID));
 	}
 
 	private static Reference<?> entryRef(Reference<? extends EnumerableByIdentifier<?>> containerRef, String entryID) {
@@ -55,6 +60,11 @@ class BsonSurgeon {
 		}
 	}
 
+	@Value
+	private static class GraftPoint {
+		Reference<?> entryRef;
+	}
+
 	/**
 	 * For efficiency, this modifies <code>document</code> in-place.
 	 *
@@ -65,8 +75,8 @@ class BsonSurgeon {
 	 */
 	public List<BsonDocument> scatter(Reference<?> ref, BsonDocument document) {
 		List<BsonDocument> parts = new ArrayList<>();
-		for (Reference<?> entryRef: separateCollectionEntryRefs) {
-			scatterOneCollection(ref, entryRef, document, parts);
+		for (GraftPoint graftPoint: graftPoints) {
+			scatterOneCollection(ref, graftPoint, document, parts);
 		}
 
 		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
@@ -75,15 +85,15 @@ class BsonSurgeon {
 		return parts;
 	}
 
-	private void scatterOneCollection(Reference<?> mainRef, Reference<?> entryRefArg, BsonDocument docToScatter, List<BsonDocument> parts) {
+	private void scatterOneCollection(Reference<?> mainRef, GraftPoint graftPoint, BsonDocument docToScatter, List<BsonDocument> parts) {
 		// Only continue if entryRefArg could to a proper descendant node of mainRef
-		if (entryRefArg.path().length() <= mainRef.path().length()) {
+		if (graftPoint.entryRef.path().length() <= mainRef.path().length()) {
 			return;
-		} else if (!mainRef.path().matches(entryRefArg.path().truncatedTo(mainRef.path().length()))) {
+		} else if (!mainRef.path().matches(graftPoint.entryRef.path().truncatedTo(mainRef.path().length()))) {
 			return;
 		}
 
-		Reference<?> entryRef = entryRefArg.boundBy(mainRef.path());
+		Reference<?> entryRef = graftPoint.entryRef.boundBy(mainRef.path());
 		ArrayList<String> segments = dottedFieldNameSegments(entryRef, mainRef);
 		Path path = entryRef.path();
 		if (path.numParameters() == 0) {
@@ -103,7 +113,7 @@ class BsonSurgeon {
 			int fpi = path.firstParameterIndex();
 			BsonDocument catalogDoc = lookup(docToScatter, segments.subList(1, fpi + 1));
 			catalogDoc.forEach((id, value) ->
-				scatterOneCollection(mainRef, entryRef.boundTo(Identifier.from(id)), docToScatter, parts));
+				scatterOneCollection(mainRef, new GraftPoint(entryRef.boundTo(Identifier.from(id))), docToScatter, parts));
 		}
 	}
 
