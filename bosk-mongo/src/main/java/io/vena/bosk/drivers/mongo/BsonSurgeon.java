@@ -81,7 +81,7 @@ class BsonSurgeon {
 		}
 
 		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
-		parts.add(createRecipe(new BsonArray(), document));
+		parts.add(createRecipe(ref, new BsonArray(), document));
 
 		return parts;
 	}
@@ -105,8 +105,9 @@ class BsonSurgeon {
 				// Stub-out each entry in the collection by replacing it with TRUE
 				// and adding the actual contents to the parts list
 				BsonArray entryBsonPath = containingDocBsonPath.clone();
-				entryBsonPath.add(new BsonString(entry.getKey()));
-				parts.add(createRecipe(entryBsonPath, entry.getValue()));
+				String entryID = entry.getKey();
+				entryBsonPath.add(new BsonString(entryID));
+				parts.add(createRecipe(entryRef(graftPoint.containerRef, entryID), entryBsonPath, entry.getValue()));
 				entry.setValue(BsonBoolean.TRUE);
 			}
 		} else {
@@ -115,14 +116,15 @@ class BsonSurgeon {
 			BsonDocument catalogDoc = lookup(docToScatter, segments.subList(1, fpi + 1));
 			catalogDoc.forEach((id, value) -> scatterOneCollection(
 				docRef,
-				new GraftPoint(graftPoint.containerRef, entryRef.boundTo(Identifier.from(id))),
+				new GraftPoint(graftPoint.containerRef, graftPoint.entryRef.boundTo(Identifier.from(id))),
 				docToScatter,
 				parts));
 		}
 	}
 
-	private static BsonDocument createRecipe(BsonArray entryBsonPath, BsonValue entryState) {
+	private static BsonDocument createRecipe(Reference<?> mainRef, BsonArray entryBsonPath, BsonValue entryState) {
 		return new BsonDocument()
+			.append("_id", new BsonString(mainRef.path().urlEncoded()))
 			.append(BSON_PATH_FIELD, entryBsonPath)
 			.append(STATE_FIELD, entryState);
 	}

@@ -67,5 +67,6 @@ Fields:
 
 Fields:
 - `_id`: percent-encoded concrete path where this document's state fits into the state tree. Starts with `/`
+- `bsonPath`: array of field names indicating where the `state` would go if the bosk state were entirely in one big document
 - `state`: the bosk state
 - Any separate containers (Catalogs or SideTables) map IDs to the value `true` (rather than containing the actual tree node)
