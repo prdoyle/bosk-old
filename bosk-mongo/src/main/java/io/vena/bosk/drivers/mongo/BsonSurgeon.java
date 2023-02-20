@@ -69,32 +69,34 @@ class BsonSurgeon {
 	/**
 	 * For efficiency, this modifies <code>document</code> in-place.
 	 *
-	 * @param ref the bosk node corresponding to <code>document</code>
+	 * @param docRef the bosk node corresponding to <code>document</code>
 	 * @param document will be modified!
 	 * @return list of {@link BsonDocument}s which, when passed to {@link #gather}, combine to form the original <code>document</code>
 	 * @see #gather
 	 */
-	public List<BsonDocument> scatter(Reference<?> ref, BsonDocument document) {
+	public List<BsonDocument> scatter(Reference<?> docRef, BsonDocument document) {
 		List<BsonDocument> parts = new ArrayList<>();
 		for (GraftPoint graftPoint: graftPoints) {
-			scatterOneCollection(ref, graftPoint, document, parts);
+			scatterOneCollection(docRef, graftPoint, document, parts);
 		}
 
 		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
-		parts.add(createRecipe(ref, new BsonArray(), document));
+		parts.add(createRecipe(docRef, new BsonArray(), document));
 
 		return parts;
 	}
 
 	private void scatterOneCollection(Reference<?> docRef, GraftPoint graftPoint, BsonDocument docToScatter, List<BsonDocument> parts) {
 		// Only continue if the graft point could to a proper descendant node of docRef
-		if (graftPoint.entryRef.path().length() <= docRef.path().length()) {
+		Path graftPath = graftPoint.entryRef.path();
+		Path docPath = docRef.path();
+		if (graftPath.length() <= docPath.length()) {
 			return;
-		} else if (!docRef.path().matches(graftPoint.entryRef.path().truncatedTo(docRef.path().length()))) {
+		} else if (!docPath.matches(graftPath.truncatedTo(docPath.length()))) {
 			return;
 		}
 
-		Reference<?> entryRef = graftPoint.entryRef.boundBy(docRef.path());
+		Reference<?> entryRef = graftPoint.entryRef.boundBy(docPath);
 		ArrayList<String> segments = dottedFieldNameSegments(entryRef, docRef);
 		Path path = entryRef.path();
 		if (path.numParameters() == 0) {
@@ -122,9 +124,9 @@ class BsonSurgeon {
 		}
 	}
 
-	private static BsonDocument createRecipe(Reference<?> mainRef, BsonArray entryBsonPath, BsonValue entryState) {
+	private static BsonDocument createRecipe(Reference<?> docRef, BsonArray entryBsonPath, BsonValue entryState) {
 		return new BsonDocument()
-			.append("_id", new BsonString(mainRef.path().urlEncoded()))
+			.append("_id", new BsonString(docRef.path().urlEncoded()))
 			.append(BSON_PATH_FIELD, entryBsonPath)
 			.append(STATE_FIELD, entryState);
 	}
