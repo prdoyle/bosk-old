@@ -1,3 +1,4 @@
+Describes a hypothetical database format for a multi-collection multi-document storage scheme.
 
 ## Design principles
 

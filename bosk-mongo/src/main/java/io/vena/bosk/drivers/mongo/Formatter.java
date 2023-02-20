@@ -74,7 +74,7 @@ final class Formatter {
 	static final BsonInt64 REVISION_ONE = new BsonInt64(1);
 
 	/**
-	 * The fields of the main MongoDB document.  Case-sensitive.
+	 * The fields of the MongoDB documents.  Case-sensitive.
 	 *
 	 * <p>
 	 * No field name should be a prefix of any other.
@@ -84,6 +84,8 @@ final class Formatter {
 		state,
 		echo,
 		revision,
+		format,
+		graftPoints,
 	}
 
 	//
