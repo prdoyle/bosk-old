@@ -27,8 +27,8 @@ import static java.util.stream.Collectors.toList;
 class BsonSurgeon {
 	final List<Reference<?>> separateCollectionEntryRefs;
 
-	public static final String BSON_PATH_FIELD = "bsonPath";
-	public static final String STATE_FIELD = "state";
+	public static final String BSON_PATH_FIELD = Formatter.DocumentFields.bsonPath.name();
+	public static final String STATE_FIELD = Formatter.DocumentFields.state.name();
 
 	BsonSurgeon(List<Reference<? extends EnumerableByIdentifier<?>>> separateCollections) {
 		separateCollectionEntryRefs = new ArrayList<>(separateCollections.size());

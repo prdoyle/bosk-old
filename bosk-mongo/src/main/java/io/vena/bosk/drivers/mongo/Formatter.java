@@ -86,6 +86,7 @@ final class Formatter {
 		revision,
 		format,
 		graftPoints,
+		bsonPath,
 	}
 
 	//
