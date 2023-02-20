@@ -113,8 +113,11 @@ class BsonSurgeon {
 			// Loop through all possible values of the first parameter and recurse
 			int fpi = path.firstParameterIndex();
 			BsonDocument catalogDoc = lookup(docToScatter, segments.subList(1, fpi + 1));
-			catalogDoc.forEach((id, value) ->
-				scatterOneCollection(docRef, new GraftPoint(graftPoint.containerRef, entryRef.boundTo(Identifier.from(id))), docToScatter, parts));
+			catalogDoc.forEach((id, value) -> scatterOneCollection(
+				docRef,
+				new GraftPoint(graftPoint.containerRef, entryRef.boundTo(Identifier.from(id))),
+				docToScatter,
+				parts));
 		}
 	}
 
