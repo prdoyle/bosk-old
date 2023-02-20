@@ -16,7 +16,6 @@ import java.util.List;
 import lombok.var;
 import org.bson.BsonDocument;
 import org.bson.Document;
-import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.json.JsonWriterSettings;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,7 +27,6 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 	BsonSurgeon surgeon;
 	BsonPlugin bsonPlugin;
 	Formatter formatter;
-	CodecRegistry codecRegistry;
 
 	@BeforeEach
 	void setup() throws InvalidTypeException {

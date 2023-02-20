@@ -8,7 +8,6 @@ import io.vena.bosk.exceptions.InvalidTypeException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import lombok.var;
 import org.bson.BsonArray;
 import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
@@ -20,6 +19,11 @@ import static io.vena.bosk.drivers.mongo.Formatter.dottedFieldNameSegments;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 
+/**
+ * Splits up a single large BSON document into multiple self-describing pieces,
+ * and re-assembles them. Provides the core mechanism to carve large BSON structures
+ * into pieces so they can stay under the MongoDB document size limit.
+ */
 class BsonSurgeon {
 	final List<Reference<?>> separateCollectionEntryRefs;
 
@@ -31,19 +35,24 @@ class BsonSurgeon {
 		separateCollections.stream()
 			// Scatter bottom-up so we don't have to worry about scattering already-scattered documents
 			.sorted(comparing((Reference<?> ref) -> ref.path().length()).reversed())
-			.forEach(containerRef -> {
-				// We need a reference pointing all the way to the collection entry, so that if the
-				// collection itself has BSON fields (like SideTable does), those fields will be included
-				// in the dotted name segment list. The actual ID we pick doesn't matter and will be ignored.
-				String placeholder = "SURGEON_PLACEHOLDER";
-				try {
-					separateCollectionEntryRefs.add(containerRef.then(Object.class, placeholder));
-				} catch (InvalidTypeException e) {
-					// Could conceivably happen if a user created their own type that extends EnumerableByIdentifier.
-					// The built-in subtypes (Catalog, SideTable) won't cause this problem.
-					throw new IllegalArgumentException("Error constructing entry reference from \"" + containerRef + "\" of type " + containerRef.targetType(), e);
-				}
+			.forEachOrdered(containerRef -> {
+				separateCollectionEntryRefs.add(entryRef(containerRef));
 			});
+	}
+
+	private static Reference<?> entryRef(Reference<? extends EnumerableByIdentifier<?>> containerRef) {
+		// We need a reference pointing all the way to the collection entry, so that if the
+		// collection itself has BSON fields (like SideTable does), those fields will be included
+		// in the dotted name segment list. The actual ID we pick doesn't matter and will be ignored.
+		String placeholder = "SURGEON_PLACEHOLDER";
+
+		try {
+			return containerRef.then(Object.class, placeholder);
+		} catch (InvalidTypeException e) {
+			// Could conceivably happen if a user created their own type that extends EnumerableByIdentifier.
+			// The built-in subtypes (Catalog, SideTable) won't cause this problem.
+			throw new IllegalArgumentException("Error constructing entry reference from \"" + containerRef + "\" of type " + containerRef.targetType(), e);
+		}
 	}
 
 	/**
@@ -51,6 +60,8 @@ class BsonSurgeon {
 	 *
 	 * @param ref the bosk node corresponding to <code>document</code>
 	 * @param document will be modified!
+	 * @return list of {@link BsonDocument}s which, when passed to {@link #gather}, combine to form the original <code>document</code>
+	 * @see #gather
 	 */
 	public List<BsonDocument> scatter(Reference<?> ref, BsonDocument document) {
 		List<BsonDocument> parts = new ArrayList<>();
@@ -80,6 +91,8 @@ class BsonSurgeon {
 			BsonArray containingDocBsonPath = new BsonArray(containingDocSegments.stream().map(BsonString::new).collect(toList()));
 			BsonDocument docToSeparate = lookup(docToScatter, containingDocSegments);
 			for (Map.Entry<String, BsonValue> entry : docToSeparate.entrySet()) {
+				// Stub-out each entry in the collection by replacing it with TRUE
+				// and adding the actual contents to the parts list
 				BsonArray entryBsonPath = containingDocBsonPath.clone();
 				entryBsonPath.add(new BsonString(entry.getKey()));
 				parts.add(createRecipe(entryBsonPath, entry.getValue()));
@@ -115,13 +128,22 @@ class BsonSurgeon {
 	/**
 	 * For efficiency, this modifies <code>partsList</code> in-place.
 	 *
+	 * <p>
+	 * <code>partsList</code> is a list of "instructions" for assembling a larger document.
+	 * By design, this method is supposed to be simple and general;
+	 * any sophistication should be in {@link #scatter}.
+	 * This way, {@link #scatter} can evolve without breaking backward compatibility
+	 * with parts lists from existing databases.
+	 *
+	 * <p>
+	 * This method's behaviour is not sensitive to the ordering of <code>partsList</code>.
+	 *
 	 * @param partsList will be modified!
+	 * @see #scatter
 	 */
 	public BsonDocument gather(List<BsonDocument> partsList) {
 		// Sorting by path length ensures we gather parents before children.
 		// (Sorting lexicographically might be better for cache locality.)
-		// Because sort is stable, the order of children for any given parent is unaltered,
-		// since their bsonPaths all have the same number of segments.
 		partsList.sort(comparing(doc -> doc.getArray(BSON_PATH_FIELD).size()));
 
 		BsonDocument rootRecipe = partsList.get(0);
@@ -130,7 +152,7 @@ class BsonSurgeon {
 		}
 
 		BsonDocument whole = rootRecipe.getDocument(STATE_FIELD);
-		for (var entry: partsList.subList(1, partsList.size())) {
+		for (BsonDocument entry: partsList.subList(1, partsList.size())) {
 			List<String> bsonSegments = entry.getArray(BSON_PATH_FIELD).stream().map(segment -> ((BsonString)segment).getValue()).collect(toList());
 			String key = bsonSegments.get(bsonSegments.size()-1);
 			BsonValue value = entry.get(STATE_FIELD);
