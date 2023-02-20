@@ -47,7 +47,7 @@ class BsonSurgeon {
 	}
 
 	private static GraftPoint graftPoint(Reference<? extends EnumerableByIdentifier<?>> containerRef, String entryID) {
-		return new GraftPoint(entryRef(containerRef, entryID));
+		return new GraftPoint(containerRef, entryRef(containerRef, entryID));
 	}
 
 	private static Reference<?> entryRef(Reference<? extends EnumerableByIdentifier<?>> containerRef, String entryID) {
@@ -62,6 +62,7 @@ class BsonSurgeon {
 
 	@Value
 	private static class GraftPoint {
+		Reference<? extends EnumerableByIdentifier<?>> containerRef;
 		Reference<?> entryRef;
 	}
 
@@ -113,7 +114,7 @@ class BsonSurgeon {
 			int fpi = path.firstParameterIndex();
 			BsonDocument catalogDoc = lookup(docToScatter, segments.subList(1, fpi + 1));
 			catalogDoc.forEach((id, value) ->
-				scatterOneCollection(docRef, new GraftPoint(entryRef.boundTo(Identifier.from(id))), docToScatter, parts));
+				scatterOneCollection(docRef, new GraftPoint(graftPoint.containerRef, entryRef.boundTo(Identifier.from(id))), docToScatter, parts));
 		}
 	}
 
