@@ -36,18 +36,18 @@ class BsonSurgeon {
 			// Scatter bottom-up so we don't have to worry about scattering already-scattered documents
 			.sorted(comparing((Reference<?> ref) -> ref.path().length()).reversed())
 			.forEachOrdered(containerRef -> {
-				separateCollectionEntryRefs.add(entryRef(containerRef));
+				// We need a reference pointing all the way to the collection entry, so that if the
+				// collection itself has BSON fields (like SideTable does), those fields will be included
+				// in the dotted name segment list. The actual ID we pick doesn't matter and will be ignored.
+				String surgeonPlaceholder = "SURGEON_PLACEHOLDER";
+
+				separateCollectionEntryRefs.add(entryRef(containerRef, surgeonPlaceholder));
 			});
 	}
 
-	private static Reference<?> entryRef(Reference<? extends EnumerableByIdentifier<?>> containerRef) {
-		// We need a reference pointing all the way to the collection entry, so that if the
-		// collection itself has BSON fields (like SideTable does), those fields will be included
-		// in the dotted name segment list. The actual ID we pick doesn't matter and will be ignored.
-		String placeholder = "SURGEON_PLACEHOLDER";
-
+	private static Reference<?> entryRef(Reference<? extends EnumerableByIdentifier<?>> containerRef, String entryID) {
 		try {
-			return containerRef.then(Object.class, placeholder);
+			return containerRef.then(Object.class, entryID);
 		} catch (InvalidTypeException e) {
 			// Could conceivably happen if a user created their own type that extends EnumerableByIdentifier.
 			// The built-in subtypes (Catalog, SideTable) won't cause this problem.
