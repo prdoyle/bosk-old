@@ -85,16 +85,16 @@ class BsonSurgeon {
 		return parts;
 	}
 
-	private void scatterOneCollection(Reference<?> mainRef, GraftPoint graftPoint, BsonDocument docToScatter, List<BsonDocument> parts) {
-		// Only continue if entryRefArg could to a proper descendant node of mainRef
-		if (graftPoint.entryRef.path().length() <= mainRef.path().length()) {
+	private void scatterOneCollection(Reference<?> docRef, GraftPoint graftPoint, BsonDocument docToScatter, List<BsonDocument> parts) {
+		// Only continue if entryRefArg could to a proper descendant node of docRef
+		if (graftPoint.entryRef.path().length() <= docRef.path().length()) {
 			return;
-		} else if (!mainRef.path().matches(graftPoint.entryRef.path().truncatedTo(mainRef.path().length()))) {
+		} else if (!docRef.path().matches(graftPoint.entryRef.path().truncatedTo(docRef.path().length()))) {
 			return;
 		}
 
-		Reference<?> entryRef = graftPoint.entryRef.boundBy(mainRef.path());
-		ArrayList<String> segments = dottedFieldNameSegments(entryRef, mainRef);
+		Reference<?> entryRef = graftPoint.entryRef.boundBy(docRef.path());
+		ArrayList<String> segments = dottedFieldNameSegments(entryRef, docRef);
 		Path path = entryRef.path();
 		if (path.numParameters() == 0) {
 			List<String> containingDocSegments = segments.subList(1, segments.size() - 1);
@@ -113,7 +113,7 @@ class BsonSurgeon {
 			int fpi = path.firstParameterIndex();
 			BsonDocument catalogDoc = lookup(docToScatter, segments.subList(1, fpi + 1));
 			catalogDoc.forEach((id, value) ->
-				scatterOneCollection(mainRef, new GraftPoint(entryRef.boundTo(Identifier.from(id))), docToScatter, parts));
+				scatterOneCollection(docRef, new GraftPoint(entryRef.boundTo(Identifier.from(id))), docToScatter, parts));
 		}
 	}
 
