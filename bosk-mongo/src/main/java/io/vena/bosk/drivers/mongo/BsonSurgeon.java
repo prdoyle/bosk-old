@@ -86,7 +86,7 @@ class BsonSurgeon {
 	}
 
 	private void scatterOneCollection(Reference<?> docRef, GraftPoint graftPoint, BsonDocument docToScatter, List<BsonDocument> parts) {
-		// Only continue if entryRefArg could to a proper descendant node of docRef
+		// Only continue if the graft point could to a proper descendant node of docRef
 		if (graftPoint.entryRef.path().length() <= docRef.path().length()) {
 			return;
 		} else if (!docRef.path().matches(graftPoint.entryRef.path().truncatedTo(docRef.path().length()))) {
