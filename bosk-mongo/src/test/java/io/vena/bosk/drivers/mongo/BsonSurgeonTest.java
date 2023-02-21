@@ -62,7 +62,13 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 			entireDoc = (BsonDocument) formatter.object2bsonValue(mainRef.value(), mainRef.targetType());
 		}
 
-		List<BsonDocument> parts = surgeon.scatter(mainRef, entireDoc.clone());
+		List<BsonDocument> parts = surgeon.scatter(bosk.rootReference(), mainRef, entireDoc.clone());
+
+		JsonWriterSettings jsonWriterSettings = JsonWriterSettings.builder().indent(true).build();
+		System.out.println("== Parts ==");
+		parts.forEach(part ->
+			System.out.println(part.toJson(jsonWriterSettings)));
+
 		List<BsonDocument> receivedParts = parts.stream()
 			.map(part -> Document.parse(part.toJson()).toBsonDocument(BsonDocument.class, formatter.codecRegistry()))
 			.collect(toList());
@@ -70,11 +76,6 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 
 		assertEquals(entireDoc, gathered);
 
-		JsonWriterSettings jsonWriterSettings = JsonWriterSettings.builder().indent(true).build();
-
-		System.out.println("== Parts ==");
-		parts.forEach(part ->
-			System.out.println(part.toJson(jsonWriterSettings)));
 		System.out.println("== Gathered ==");
 		System.out.println(gathered.toJson(jsonWriterSettings));
 	}

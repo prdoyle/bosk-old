@@ -74,19 +74,30 @@ class BsonSurgeon {
 	 * @return list of {@link BsonDocument}s which, when passed to {@link #gather}, combine to form the original <code>document</code>
 	 * @see #gather
 	 */
-	public List<BsonDocument> scatter(Reference<?> docRef, BsonDocument document) {
+	public List<BsonDocument> scatter(Reference<?> rootRef, Reference<?> docRef, BsonDocument document) {
 		List<BsonDocument> parts = new ArrayList<>();
 		for (GraftPoint graftPoint: graftPoints) {
-			scatterOneCollection(docRef, graftPoint, document, parts);
+			scatterOneCollection(rootRef, docRef, graftPoint, document, parts);
 		}
 
 		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
-		parts.add(createRecipe(docRef.path(), new BsonArray(), document));
+		List<BsonString> docSegments = docSegments(rootRef, docRef);
+
+		parts.add(createRecipe(docRef.path(), new BsonArray(docSegments), document));
 
 		return parts;
 	}
 
-	private void scatterOneCollection(Reference<?> docRef, GraftPoint graftPoint, BsonDocument docToScatter, List<BsonDocument> parts) {
+	private static List<BsonString> docSegments(Reference<?> rootRef, Reference<?> docRef) {
+		ArrayList<String> segmentsFromRoot = dottedFieldNameSegments(docRef, rootRef);
+		return segmentsFromRoot
+			.subList(1, segmentsFromRoot.size())
+			.stream()
+			.map(BsonString::new)
+			.collect(toList());
+	}
+
+	private void scatterOneCollection(Reference<?> rootRef, Reference<?> docRef, GraftPoint graftPoint, BsonDocument docToScatter, List<BsonDocument> parts) {
 		// Only continue if the graft point could to a proper descendant node of docRef
 		Path graftPath = graftPoint.entryRef.path();
 		Path docPath = docRef.path();
@@ -97,16 +108,18 @@ class BsonSurgeon {
 		}
 
 		Reference<?> entryRef = graftPoint.entryRef.boundBy(docPath);
-		ArrayList<String> segments = dottedFieldNameSegments(entryRef, docRef);
+		ArrayList<String> segmentsFromRoot = dottedFieldNameSegments(entryRef, rootRef);
+		ArrayList<String> segmentsFromDoc = dottedFieldNameSegments(entryRef, docRef);
 		Path path = entryRef.path();
 		if (path.numParameters() == 0) {
-			List<String> containingDocSegments = segments.subList(1, segments.size() - 1);
-			BsonArray containingDocBsonPath = new BsonArray(containingDocSegments.stream().map(BsonString::new).collect(toList()));
+			// Remove the initial "state" segment and the final placeholder segment
+			List<String> containingDocSegments = segmentsFromDoc.subList(1, segmentsFromDoc.size() - 1);
 			BsonDocument docToSeparate = lookup(docToScatter, containingDocSegments);
+			BsonArray bsonPathBase = new BsonArray(segmentsFromRoot.subList(1, segmentsFromRoot.size() - 1).stream().map(BsonString::new).collect(toList()));
 			for (Map.Entry<String, BsonValue> entry : docToSeparate.entrySet()) {
 				// Stub-out each entry in the collection by replacing it with TRUE
 				// and adding the actual contents to the parts list
-				BsonArray entryBsonPath = containingDocBsonPath.clone();
+				BsonArray entryBsonPath = bsonPathBase.clone();
 				String entryID = entry.getKey();
 				entryBsonPath.add(new BsonString(entryID));
 				parts.add(createRecipe(graftPoint.containerRef.path().then(entryID), entryBsonPath, entry.getValue()));
@@ -115,9 +128,9 @@ class BsonSurgeon {
 		} else {
 			// Loop through all possible values of the first parameter and recurse
 			int fpi = path.firstParameterIndex();
-			BsonDocument catalogDoc = lookup(docToScatter, segments.subList(1, fpi + 1));
+			BsonDocument catalogDoc = lookup(docToScatter, segmentsFromDoc.subList(1, fpi + 1));
 			catalogDoc.forEach((id, value) -> scatterOneCollection(
-				docRef,
+				rootRef, docRef,
 				new GraftPoint(graftPoint.containerRef, graftPoint.entryRef.boundTo(Identifier.from(id))),
 				docToScatter,
 				parts));
@@ -170,9 +183,7 @@ class BsonSurgeon {
 		partsList.sort(comparing(doc -> doc.getArray(BSON_PATH_FIELD).size()));
 
 		BsonDocument rootRecipe = partsList.get(0);
-		if (!rootRecipe.getArray(BSON_PATH_FIELD).isEmpty()) {
-			throw new IllegalArgumentException("No root recipe");
-		}
+		int prefixLength = rootRecipe.getArray(BSON_PATH_FIELD).size();
 
 		BsonDocument whole = rootRecipe.getDocument(STATE_FIELD);
 		for (BsonDocument entry: partsList.subList(1, partsList.size())) {
@@ -182,7 +193,7 @@ class BsonSurgeon {
 
 			// The container should already have an entry. We'll be replacing it,
 			// and this does not affect the order of the entries.
-			BsonDocument container = lookup(whole, bsonSegments.subList(0, bsonSegments.size() - 1));
+			BsonDocument container = lookup(whole, bsonSegments.subList(prefixLength, bsonSegments.size() - 1));
 			container.put(key, value);
 		}
 
