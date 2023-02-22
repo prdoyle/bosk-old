@@ -44,7 +44,7 @@ public class BsonSurgeonTest extends AbstractDriverTest {
 		);
 		makeCatalog(catalogRef);
 		makeCatalog(nestedCatalogRef.boundTo(Identifier.from("entity1")));
-		makeCatalog(nestedCatalogRef.boundTo(Identifier.from("entity2")));
+		makeCatalog(nestedCatalogRef.boundTo(Identifier.from("weird|i.d.")));
 		driver.submitReplacement(sideTableRef.then(Identifier.from("child1")), TestEntity.empty(Identifier.from("sideTableValue"), catalogRef));
 		surgeon = new BsonSurgeon(separateCollections);
 	}

@@ -183,17 +183,20 @@ class BsonSurgeon {
 		partsList.sort(comparing(doc -> doc.getArray(BSON_PATH_FIELD).size()));
 
 		BsonDocument rootRecipe = partsList.get(0);
-		int prefixLength = rootRecipe.getArray(BSON_PATH_FIELD).size();
+		List<String> prefix = rootRecipe.getArray(BSON_PATH_FIELD).getValues().stream().map(x -> x.asString()).map(s -> s.getValue()).collect(toList());
 
 		BsonDocument whole = rootRecipe.getDocument(STATE_FIELD);
 		for (BsonDocument entry: partsList.subList(1, partsList.size())) {
 			List<String> bsonSegments = entry.getArray(BSON_PATH_FIELD).stream().map(segment -> ((BsonString)segment).getValue()).collect(toList());
+			if (!bsonSegments.subList(0, prefix.size()).equals(prefix)) {
+				throw new IllegalArgumentException("Part doc is not contained within the root doc. Part: " + bsonSegments + " Root:" + prefix);
+			}
 			String key = bsonSegments.get(bsonSegments.size()-1);
 			BsonValue value = entry.get(STATE_FIELD);
 
 			// The container should already have an entry. We'll be replacing it,
 			// and this does not affect the order of the entries.
-			BsonDocument container = lookup(whole, bsonSegments.subList(prefixLength, bsonSegments.size() - 1));
+			BsonDocument container = lookup(whole, bsonSegments.subList(prefix.size(), bsonSegments.size() - 1));
 			container.put(key, value);
 		}
 
