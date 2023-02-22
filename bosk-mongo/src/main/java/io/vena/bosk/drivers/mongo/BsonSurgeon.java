@@ -17,6 +17,7 @@ import org.bson.BsonString;
 import org.bson.BsonValue;
 
 import static io.vena.bosk.drivers.mongo.Formatter.dottedFieldNameSegments;
+import static io.vena.bosk.drivers.mongo.Formatter.undottedFieldNameSegment;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 
@@ -129,11 +130,14 @@ class BsonSurgeon {
 			// Loop through all possible values of the first parameter and recurse
 			int fpi = path.firstParameterIndex();
 			BsonDocument catalogDoc = lookup(docToScatter, segmentsFromDoc.subList(1, fpi + 1));
-			catalogDoc.forEach((id, value) -> scatterOneCollection(
-				rootRef, docRef,
-				new GraftPoint(graftPoint.containerRef, graftPoint.entryRef.boundTo(Identifier.from(id))),
-				docToScatter,
-				parts));
+			catalogDoc.forEach((fieldName, value) -> {
+				Identifier entryID = Identifier.from(undottedFieldNameSegment(fieldName));
+				scatterOneCollection(
+					rootRef, docRef,
+					new GraftPoint(graftPoint.containerRef, graftPoint.entryRef.boundTo(entryID)),
+					docToScatter,
+					parts);
+			});
 		}
 	}
 
