@@ -11,7 +11,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import lombok.Value;
-import org.bson.BsonArray;
 import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
 import org.bson.BsonInvalidOperationException;
@@ -20,8 +19,8 @@ import org.bson.BsonValue;
 
 import static io.vena.bosk.drivers.mongo.Formatter.dottedFieldNameSegments;
 import static io.vena.bosk.drivers.mongo.Formatter.undottedFieldNameSegment;
+import static java.util.Collections.emptyList;
 import static java.util.Comparator.comparing;
-import static java.util.stream.Collectors.toList;
 
 /**
  * Splits up a single large BSON document into multiple self-describing pieces,
@@ -80,7 +79,7 @@ class BsonSurgeon {
 		}
 
 		// `document` has now had the scattered pieces replaced by BsonBoolean.TRUE
-		BsonString docBsonPath = new BsonString(String.join("|", docSegments(rootRef, docRef)));
+		String docBsonPath = String.join("|", docSegments(rootRef, docRef));
 		parts.add(createRecipe(document, docBsonPath));
 
 		return parts;
@@ -113,7 +112,7 @@ class BsonSurgeon {
 			for (Map.Entry<String, BsonValue> entry : docToSeparate.entrySet()) {
 				// Stub-out each entry in the collection by replacing it with TRUE
 				// and adding the actual contents to the parts list
-				parts.add(createRecipe(entry.getValue(), new BsonString(bsonPathBase + "|" + entry.getKey())));
+				parts.add(createRecipe(entry.getValue(), bsonPathBase + "|" + entry.getKey()));
 				entry.setValue(BsonBoolean.TRUE);
 			}
 		} else {
@@ -136,23 +135,19 @@ class BsonSurgeon {
 	 * They'll have the same segments, except where the BSON representation of a container actually contains its own
 	 * fields (as with {@link io.vena.bosk.SideTable}, in which case those fields will appear too.
 	 */
-	private static BsonDocument createRecipe(BsonValue entryState, BsonString bsonPathString) {
+	private static BsonDocument createRecipe(BsonValue entryState, String bsonPathString) {
 		return new BsonDocument()
-			.append(BSON_PATH_FIELD, bsonPathString)
+			.append(BSON_PATH_FIELD, new BsonString(bsonPathString))
 			.append(STATE_FIELD, entryState);
 	}
 
-	private static BsonArray bsonPathArray(BsonString bsonPath) {
+	private static List<String> bsonPathSegments(BsonString bsonPath) {
 		if (bsonPath.getValue().isEmpty()) {
 			// String.split doesn't do the right thing in this case. We want an empty array,
 			// not an array containing a single empty string.
-			return new BsonArray();
+			return emptyList();
 		} else {
-			return new BsonArray(
-				Arrays.stream(bsonPath.getValue().split("\\|"))
-					.map(BsonString::new)
-					.collect(toList())
-			);
+			return Arrays.asList(bsonPath.getValue().split("\\|"));
 		}
 	}
 
@@ -187,14 +182,14 @@ class BsonSurgeon {
 	public BsonDocument gather(List<BsonDocument> partsList) {
 		// Sorting by path length ensures we gather parents before children.
 		// (Sorting lexicographically might be better for cache locality.)
-		partsList.sort(comparing(doc -> bsonPathArray(doc.getString(BSON_PATH_FIELD)).size()));
+		partsList.sort(comparing(doc -> bsonPathSegments(doc.getString(BSON_PATH_FIELD)).size()));
 
 		BsonDocument rootRecipe = partsList.get(0);
-		List<String> prefix = bsonPathArray(rootRecipe.getString(BSON_PATH_FIELD)).getValues().stream().map(x -> x.asString()).map(s -> s.getValue()).collect(toList());
+		List<String> prefix = bsonPathSegments(rootRecipe.getString(BSON_PATH_FIELD));
 
 		BsonDocument whole = rootRecipe.getDocument(STATE_FIELD);
 		for (BsonDocument entry: partsList.subList(1, partsList.size())) {
-			List<String> bsonSegments = bsonPathArray(entry.getString(BSON_PATH_FIELD)).stream().map(segment -> ((BsonString)segment).getValue()).collect(toList());
+			List<String> bsonSegments = bsonPathSegments(entry.getString(BSON_PATH_FIELD));
 			if (!bsonSegments.subList(0, prefix.size()).equals(prefix)) {
 				throw new IllegalArgumentException("Part doc is not contained within the root doc. Part: " + bsonSegments + " Root:" + prefix);
 			}
