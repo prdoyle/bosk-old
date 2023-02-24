@@ -6,6 +6,7 @@ import io.vena.bosk.Path;
 import io.vena.bosk.Reference;
 import io.vena.bosk.exceptions.InvalidTypeException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import lombok.Value;
@@ -19,6 +20,7 @@ import org.bson.BsonValue;
 import static io.vena.bosk.drivers.mongo.Formatter.dottedFieldNameSegments;
 import static io.vena.bosk.drivers.mongo.Formatter.undottedFieldNameSegment;
 import static java.util.Comparator.comparing;
+import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
 
 /**
@@ -149,8 +151,31 @@ class BsonSurgeon {
 	private static BsonDocument createRecipe(Path entryPath, BsonArray entryBsonPath, BsonValue entryState) {
 		return new BsonDocument()
 			.append("_id", new BsonString(entryPath.urlEncoded()))
-			.append(BSON_PATH_FIELD, entryBsonPath)
+			.append(BSON_PATH_FIELD, bsonPathString(entryBsonPath))
 			.append(STATE_FIELD, entryState);
+	}
+
+	private static BsonString bsonPathString(BsonArray bsonPath) {
+		return new BsonString(
+			bsonPath.getValues().stream()
+				.map(BsonValue::asString)
+				.map(BsonString::getValue)
+				.collect(joining("|"))
+		);
+	}
+
+	private static BsonArray bsonPathArray(BsonString bsonPath) {
+		if (bsonPath.getValue().isEmpty()) {
+			// String.split doesn't do the right thing in this case. We want an empty array,
+			// not an array containing a single empty string.
+			return new BsonArray();
+		} else {
+			return new BsonArray(
+				Arrays.stream(bsonPath.getValue().split("\\|"))
+					.map(BsonString::new)
+					.collect(toList())
+			);
+		}
 	}
 
 	private static BsonDocument lookup(BsonDocument entireDoc, List<String> segments) {
@@ -184,14 +209,14 @@ class BsonSurgeon {
 	public BsonDocument gather(List<BsonDocument> partsList) {
 		// Sorting by path length ensures we gather parents before children.
 		// (Sorting lexicographically might be better for cache locality.)
-		partsList.sort(comparing(doc -> doc.getArray(BSON_PATH_FIELD).size()));
+		partsList.sort(comparing(doc -> bsonPathArray(doc.getString(BSON_PATH_FIELD)).size()));
 
 		BsonDocument rootRecipe = partsList.get(0);
-		List<String> prefix = rootRecipe.getArray(BSON_PATH_FIELD).getValues().stream().map(x -> x.asString()).map(s -> s.getValue()).collect(toList());
+		List<String> prefix = bsonPathArray(rootRecipe.getString(BSON_PATH_FIELD)).getValues().stream().map(x -> x.asString()).map(s -> s.getValue()).collect(toList());
 
 		BsonDocument whole = rootRecipe.getDocument(STATE_FIELD);
 		for (BsonDocument entry: partsList.subList(1, partsList.size())) {
-			List<String> bsonSegments = entry.getArray(BSON_PATH_FIELD).stream().map(segment -> ((BsonString)segment).getValue()).collect(toList());
+			List<String> bsonSegments = bsonPathArray(entry.getString(BSON_PATH_FIELD)).stream().map(segment -> ((BsonString)segment).getValue()).collect(toList());
 			if (!bsonSegments.subList(0, prefix.size()).equals(prefix)) {
 				throw new IllegalArgumentException("Part doc is not contained within the root doc. Part: " + bsonSegments + " Root:" + prefix);
 			}
