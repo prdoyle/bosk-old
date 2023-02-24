@@ -195,7 +195,7 @@ class BsonSurgeon {
 	public BsonDocument gather(List<BsonDocument> partsList) {
 		// Sorting by path length ensures we gather parents before children.
 		// (Sorting lexicographically might be better for cache locality.)
-		partsList.sort(comparing(doc -> bsonPathSegments(doc.getString(BSON_PATH_FIELD)).size()));
+		partsList.sort(comparing(doc -> doc.getString(BSON_PATH_FIELD).getValue().length()));
 
 		BsonDocument rootRecipe = partsList.get(0);
 		List<String> prefix = bsonPathSegments(rootRecipe.getString(BSON_PATH_FIELD));
