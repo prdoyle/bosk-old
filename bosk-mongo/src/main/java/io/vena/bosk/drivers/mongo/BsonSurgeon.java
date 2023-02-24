@@ -21,7 +21,6 @@ import org.bson.BsonValue;
 import static io.vena.bosk.drivers.mongo.Formatter.dottedFieldNameSegments;
 import static io.vena.bosk.drivers.mongo.Formatter.undottedFieldNameSegment;
 import static java.util.Comparator.comparing;
-import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
 
 /**
@@ -80,21 +79,16 @@ class BsonSurgeon {
 			scatterOneCollection(rootRef, docRef, graftPoint, document, parts);
 		}
 
-		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
-		List<BsonString> docSegments = docSegments(rootRef, docRef);
-
-		parts.add(createRecipe(new BsonArray(docSegments), document));
+		// `document` has now had the scattered pieces replaced by BsonBoolean.TRUE
+		BsonString docBsonPath = new BsonString(String.join("|", docSegments(rootRef, docRef)));
+		parts.add(createRecipe(document, docBsonPath));
 
 		return parts;
 	}
 
-	private static List<BsonString> docSegments(Reference<?> rootRef, Reference<?> docRef) {
-		ArrayList<String> segmentsFromRoot = dottedFieldNameSegments(docRef, rootRef);
-		return segmentsFromRoot
-			.subList(1, segmentsFromRoot.size())
-			.stream()
-			.map(BsonString::new)
-			.collect(toList());
+	private static List<String> docSegments(Reference<?> rootRef, Reference<?> docRef) {
+		return dottedFieldNameSegments(docRef, rootRef)
+			.subList(1, dottedFieldNameSegments(docRef, rootRef).size()); // Skip the "state" field
 	}
 
 	private void scatterOneCollection(Reference<?> rootRef, Reference<?> docRef, GraftPoint graftPoint, BsonDocument docToScatter, List<BsonDocument> parts) {
@@ -115,14 +109,11 @@ class BsonSurgeon {
 			// Remove the initial "state" segment and the final placeholder segment
 			List<String> containingDocSegments = segmentsFromDoc.subList(1, segmentsFromDoc.size() - 1);
 			BsonDocument docToSeparate = lookup(docToScatter, containingDocSegments);
-			BsonArray bsonPathBase = new BsonArray(segmentsFromRoot.subList(1, segmentsFromRoot.size() - 1).stream().map(BsonString::new).collect(toList()));
+			String bsonPathBase = String.join("|", segmentsFromRoot.subList(1, segmentsFromRoot.size() - 1));
 			for (Map.Entry<String, BsonValue> entry : docToSeparate.entrySet()) {
 				// Stub-out each entry in the collection by replacing it with TRUE
 				// and adding the actual contents to the parts list
-				BsonArray entryBsonPath = bsonPathBase.clone();
-				String entryID = entry.getKey();
-				entryBsonPath.add(new BsonString(entryID));
-				parts.add(createRecipe(entryBsonPath, entry.getValue()));
+				parts.add(createRecipe(entry.getValue(), new BsonString(bsonPathBase + "|" + entry.getKey())));
 				entry.setValue(BsonBoolean.TRUE);
 			}
 		} else {
@@ -145,19 +136,10 @@ class BsonSurgeon {
 	 * They'll have the same segments, except where the BSON representation of a container actually contains its own
 	 * fields (as with {@link io.vena.bosk.SideTable}, in which case those fields will appear too.
 	 */
-	private static BsonDocument createRecipe(BsonArray entryBsonPath, BsonValue entryState) {
+	private static BsonDocument createRecipe(BsonValue entryState, BsonString bsonPathString) {
 		return new BsonDocument()
-			.append(BSON_PATH_FIELD, bsonPathString(entryBsonPath))
+			.append(BSON_PATH_FIELD, bsonPathString)
 			.append(STATE_FIELD, entryState);
-	}
-
-	private static BsonString bsonPathString(BsonArray bsonPath) {
-		return new BsonString(
-			bsonPath.getValues().stream()
-				.map(BsonValue::asString)
-				.map(BsonString::getValue)
-				.collect(joining("|"))
-		);
 	}
 
 	private static BsonArray bsonPathArray(BsonString bsonPath) {
