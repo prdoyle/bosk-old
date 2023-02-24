@@ -85,13 +85,21 @@ class BsonSurgeon {
 		return parts;
 	}
 
+	/**
+	 * @return list of field names suitable for {@link #lookup} to find the document corresponding
+	 * to <code>docRef</code> inside a document corresponding to <code>rootRef</code>
+	 */
 	private static List<String> docSegments(Reference<?> rootRef, Reference<?> docRef) {
 		ArrayList<String> allSegments = dottedFieldNameSegments(docRef, rootRef);
 		return allSegments
 			.subList(1, allSegments.size()); // Skip the "state" field
 	}
 
-	private static List<String> entrySegments(Reference<?> rootRef, Reference<?> entryRef) {
+	/**
+	 * @return list of field names suitable for {@link #lookup} to find the document corresponding
+	 * to the container of <code>entryRef</code> inside a document corresponding to <code>rootRef</code>
+	 */
+	private static List<String> containerSegments(Reference<?> rootRef, Reference<?> entryRef) {
 		List<String> segmentsFromRoot = docSegments(rootRef, entryRef);
 		return segmentsFromRoot.subList(0, segmentsFromRoot.size() - 1); // Remove entry placeholder segment
 	}
@@ -107,22 +115,23 @@ class BsonSurgeon {
 		}
 
 		Reference<?> entryRef = graftPoint.entryRef.boundBy(docPath);
-		List<String> segmentsFromRoot = entrySegments(rootRef, entryRef);
-		List<String> segmentsFromDoc = entrySegments(docRef, entryRef);
+		List<String> segmentsFromDoc = containerSegments(docRef, entryRef);
 		Path path = entryRef.path();
 		if (path.numParameters() == 0) {
-			BsonDocument docToSeparate = lookup(docToScatter, segmentsFromDoc);
-			String bsonPathBase = String.join("|", segmentsFromRoot);
-			for (Map.Entry<String, BsonValue> entry : docToSeparate.entrySet()) {
-				// Stub-out each entry in the collection by replacing it with TRUE
+			BsonDocument containerDoc = lookup(docToScatter, segmentsFromDoc);
+			String containerBsonPath = String.join("|",
+				containerSegments(rootRef, entryRef)); // Bson paths are absolute
+			for (Map.Entry<String, BsonValue> entry : containerDoc.entrySet()) {
+				// Stub-out each entry in the container by replacing it with TRUE
 				// and adding the actual contents to the parts list
-				parts.add(createRecipe(entry.getValue(), bsonPathBase + "|" + entry.getKey()));
+				parts.add(createRecipe(entry.getValue(),
+					containerBsonPath + "|" + entry.getKey()));
 				entry.setValue(BsonBoolean.TRUE);
 			}
 		} else {
 			// Loop through all possible values of the first parameter and recurse
-			int fpi = path.firstParameterIndex();
-			BsonDocument catalogDoc = lookup(docToScatter, segmentsFromDoc.subList(0, fpi));
+			BsonDocument catalogDoc = lookup(docToScatter,
+				segmentsFromDoc.subList(0, path.firstParameterIndex()));
 			catalogDoc.forEach((fieldName, value) -> {
 				Identifier entryID = Identifier.from(undottedFieldNameSegment(fieldName));
 				scatterOneCollection(
