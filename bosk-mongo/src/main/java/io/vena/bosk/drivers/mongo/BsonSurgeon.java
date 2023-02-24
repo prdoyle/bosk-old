@@ -86,8 +86,9 @@ class BsonSurgeon {
 	}
 
 	private static List<String> docSegments(Reference<?> rootRef, Reference<?> docRef) {
-		return dottedFieldNameSegments(docRef, rootRef)
-			.subList(1, dottedFieldNameSegments(docRef, rootRef).size()); // Skip the "state" field
+		ArrayList<String> allSegments = dottedFieldNameSegments(docRef, rootRef);
+		return allSegments
+			.subList(1, allSegments.size()); // Skip the "state" field
 	}
 
 	private void scatterOneCollection(Reference<?> rootRef, Reference<?> docRef, GraftPoint graftPoint, BsonDocument docToScatter, List<BsonDocument> parts) {
