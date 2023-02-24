@@ -91,6 +91,11 @@ class BsonSurgeon {
 			.subList(1, allSegments.size()); // Skip the "state" field
 	}
 
+	private static List<String> entrySegments(Reference<?> rootRef, Reference<?> entryRef) {
+		List<String> segmentsFromRoot = docSegments(rootRef, entryRef);
+		return segmentsFromRoot.subList(0, segmentsFromRoot.size() - 1); // Remove entry placeholder segment
+	}
+
 	private void scatterOneCollection(Reference<?> rootRef, Reference<?> docRef, GraftPoint graftPoint, BsonDocument docToScatter, List<BsonDocument> parts) {
 		// Only continue if the graft point could to a proper descendant node of docRef
 		Path graftPath = graftPoint.entryRef.path();
@@ -102,14 +107,12 @@ class BsonSurgeon {
 		}
 
 		Reference<?> entryRef = graftPoint.entryRef.boundBy(docPath);
-		ArrayList<String> segmentsFromRoot = dottedFieldNameSegments(entryRef, rootRef);
-		ArrayList<String> segmentsFromDoc = dottedFieldNameSegments(entryRef, docRef);
+		List<String> segmentsFromRoot = entrySegments(rootRef, entryRef);
+		List<String> segmentsFromDoc = entrySegments(docRef, entryRef);
 		Path path = entryRef.path();
 		if (path.numParameters() == 0) {
-			// Remove the initial "state" segment and the final placeholder segment
-			List<String> containingDocSegments = segmentsFromDoc.subList(1, segmentsFromDoc.size() - 1);
-			BsonDocument docToSeparate = lookup(docToScatter, containingDocSegments);
-			String bsonPathBase = String.join("|", segmentsFromRoot.subList(1, segmentsFromRoot.size() - 1));
+			BsonDocument docToSeparate = lookup(docToScatter, segmentsFromDoc);
+			String bsonPathBase = String.join("|", segmentsFromRoot);
 			for (Map.Entry<String, BsonValue> entry : docToSeparate.entrySet()) {
 				// Stub-out each entry in the collection by replacing it with TRUE
 				// and adding the actual contents to the parts list
@@ -119,7 +122,7 @@ class BsonSurgeon {
 		} else {
 			// Loop through all possible values of the first parameter and recurse
 			int fpi = path.firstParameterIndex();
-			BsonDocument catalogDoc = lookup(docToScatter, segmentsFromDoc.subList(1, fpi + 1));
+			BsonDocument catalogDoc = lookup(docToScatter, segmentsFromDoc.subList(0, fpi));
 			catalogDoc.forEach((fieldName, value) -> {
 				Identifier entryID = Identifier.from(undottedFieldNameSegment(fieldName));
 				scatterOneCollection(
