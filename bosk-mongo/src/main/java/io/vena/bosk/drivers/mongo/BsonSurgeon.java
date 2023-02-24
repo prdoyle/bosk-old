@@ -31,7 +31,7 @@ import static java.util.stream.Collectors.toList;
 class BsonSurgeon {
 	final List<GraftPoint> graftPoints;
 
-	public static final String BSON_PATH_FIELD = Formatter.DocumentFields.bsonPath.name();
+	public static final String BSON_PATH_FIELD = "_id";
 	public static final String STATE_FIELD = Formatter.DocumentFields.state.name();
 
 	BsonSurgeon(List<Reference<? extends EnumerableByIdentifier<?>>> separateCollections) {
@@ -150,7 +150,6 @@ class BsonSurgeon {
 	 */
 	private static BsonDocument createRecipe(Path entryPath, BsonArray entryBsonPath, BsonValue entryState) {
 		return new BsonDocument()
-			.append("_id", new BsonString(entryPath.urlEncoded()))
 			.append(BSON_PATH_FIELD, bsonPathString(entryBsonPath))
 			.append(STATE_FIELD, entryState);
 	}
