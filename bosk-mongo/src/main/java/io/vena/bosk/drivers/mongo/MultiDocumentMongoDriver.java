@@ -42,6 +42,7 @@ import org.slf4j.LoggerFactory;
 
 import static com.mongodb.ErrorCategory.DUPLICATE_KEY;
 import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.echo;
+import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.format;
 import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.path;
 import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.revision;
 import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.state;
@@ -329,6 +330,7 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 
 	private BsonDocument initialDocument(BsonValue initialState) {
 		BsonDocument fieldValues = new BsonDocument("_id", rootDocumentID);
+		fieldValues.put(format.name(), formatDoc());
 		fieldValues.put(path.name(), new BsonString("/"));
 		fieldValues.put(state.name(), initialState);
 		fieldValues.put(echo.name(), new BsonString(uniqueEchoToken()));
@@ -336,6 +338,12 @@ final class MultiDocumentMongoDriver<R extends Entity> implements MongoDriver<R>
 		fieldValues.put(revision.name(), REVISION_ONE);
 
 		return fieldValues;
+	}
+
+	static BsonDocument formatDoc() {
+		return new BsonDocument()
+			.append("layout", new BsonString("multi-doc"))
+			.append("version", new BsonString("1.0.0"));
 	}
 
 	/**

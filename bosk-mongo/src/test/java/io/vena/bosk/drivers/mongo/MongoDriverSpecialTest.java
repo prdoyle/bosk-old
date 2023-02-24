@@ -40,6 +40,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 
 import static io.vena.bosk.ListingEntry.LISTING_ENTRY;
+import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.format;
 import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.path;
 import static io.vena.bosk.drivers.mongo.Formatter.DocumentFields.revision;
 import static java.lang.Long.max;
@@ -47,6 +48,7 @@ import static java.lang.System.currentTimeMillis;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -409,7 +411,7 @@ class MongoDriverSpecialTest implements TestParameters {
 		MongoCollection<Document> collection = mongoService.client()
 			.getDatabase(driverSettings.database())
 			.getCollection(collectionName);
-		deleteFields(collection, documentID, path, revision);
+		deleteFields(collection, documentID, path, revision, format);
 
 		// Make the bosk whose refurbish operation we want to test
 		Bosk<TestEntity> bosk = new Bosk<TestEntity>(
@@ -434,6 +436,7 @@ class MongoDriverSpecialTest implements TestParameters {
 			Document doc = cursor.next();
 			assertNull(doc.get(path.name()));
 			assertNull(doc.get(revision.name()));
+			assertNull(doc.get(format.name()));
 		}
 
 		// Refurbish
@@ -444,6 +447,7 @@ class MongoDriverSpecialTest implements TestParameters {
 			Document doc = cursor.next();
 			assertEquals("/", doc.get(path.name()));
 			assertEquals(1L, doc.getLong(revision.name()));
+			assertNotNull(doc.get(format.name()));
 		}
 
 	}
