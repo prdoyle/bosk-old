@@ -1,5 +1,6 @@
 package io.vena.bosk.drivers.mongo;
 
+import io.vena.bosk.Bosk;
 import io.vena.bosk.EnumerableByIdentifier;
 import io.vena.bosk.Identifier;
 import io.vena.bosk.Path;
@@ -45,12 +46,8 @@ class BsonSurgeon {
 				// in the dotted name segment list. The actual ID we pick doesn't matter and will be ignored.
 				String surgeonPlaceholder = "SURGEON_PLACEHOLDER";
 
-				this.graftPoints.add(graftPoint(containerRef, surgeonPlaceholder));
+				this.graftPoints.add(new GraftPoint(entryRef(containerRef, surgeonPlaceholder)));
 			});
-	}
-
-	private static GraftPoint graftPoint(Reference<? extends EnumerableByIdentifier<?>> containerRef, String entryID) {
-		return new GraftPoint(containerRef, entryRef(containerRef, entryID));
 	}
 
 	private static Reference<?> entryRef(Reference<? extends EnumerableByIdentifier<?>> containerRef, String entryID) {
@@ -65,13 +62,13 @@ class BsonSurgeon {
 
 	@Value
 	private static class GraftPoint {
-		Reference<? extends EnumerableByIdentifier<?>> containerRef;
 		Reference<?> entryRef;
 	}
 
 	/**
 	 * For efficiency, this modifies <code>document</code> in-place.
 	 *
+	 * @param rootRef {@link Bosk#rootReference()}
 	 * @param docRef the bosk node corresponding to <code>document</code>
 	 * @param document will be modified!
 	 * @return list of {@link BsonDocument}s which, when passed to {@link #gather}, combine to form the original <code>document</code>
@@ -86,7 +83,7 @@ class BsonSurgeon {
 		// docUnderConstruction has now had the scattered pieces replaced by BsonBoolean.TRUE
 		List<BsonString> docSegments = docSegments(rootRef, docRef);
 
-		parts.add(createRecipe(docRef.path(), new BsonArray(docSegments), document));
+		parts.add(createRecipe(new BsonArray(docSegments), document));
 
 		return parts;
 	}
@@ -125,7 +122,7 @@ class BsonSurgeon {
 				BsonArray entryBsonPath = bsonPathBase.clone();
 				String entryID = entry.getKey();
 				entryBsonPath.add(new BsonString(entryID));
-				parts.add(createRecipe(graftPoint.containerRef.path().then(entryID), entryBsonPath, entry.getValue()));
+				parts.add(createRecipe(entryBsonPath, entry.getValue()));
 				entry.setValue(BsonBoolean.TRUE);
 			}
 		} else {
@@ -136,7 +133,7 @@ class BsonSurgeon {
 				Identifier entryID = Identifier.from(undottedFieldNameSegment(fieldName));
 				scatterOneCollection(
 					rootRef, docRef,
-					new GraftPoint(graftPoint.containerRef, graftPoint.entryRef.boundTo(entryID)),
+					new GraftPoint(graftPoint.entryRef.boundTo(entryID)),
 					docToScatter,
 					parts);
 			});
@@ -148,7 +145,7 @@ class BsonSurgeon {
 	 * They'll have the same segments, except where the BSON representation of a container actually contains its own
 	 * fields (as with {@link io.vena.bosk.SideTable}, in which case those fields will appear too.
 	 */
-	private static BsonDocument createRecipe(Path entryPath, BsonArray entryBsonPath, BsonValue entryState) {
+	private static BsonDocument createRecipe(BsonArray entryBsonPath, BsonValue entryState) {
 		return new BsonDocument()
 			.append(BSON_PATH_FIELD, bsonPathString(entryBsonPath))
 			.append(STATE_FIELD, entryState);
