@@ -40,12 +40,21 @@ public interface MongoDriver<R extends Entity> extends BoskDriver<R> {
 		MongoDriverSettings driverSettings,
 		BsonPlugin bsonPlugin
 	) {
-		return (b, d) ->
-			ModalDriverFacade.<RR>factory().build(b,
-				new SingleDocumentMongoDriver<>(b, clientSettings, driverSettings, bsonPlugin, d));
+		return (b, d) -> ModalDriverFacade.factory(() -> {
+			// Pretend to check the DB manifest and select the right implementation
+			// TODO: Actually do this ^
+			return new SingleDocumentMongoDriver<>(
+				b,
+				clientSettings,
+				driverSettings,
+				bsonPlugin,
+				d);
+			}
+		).build(b,d);
 	}
 
 	interface MongoDriverFactory<RR extends Entity> extends DriverFactory<RR> {
 		@Override MongoDriver<RR> build(Bosk<RR> bosk, BoskDriver<RR> downstream);
 	}
+
 }
