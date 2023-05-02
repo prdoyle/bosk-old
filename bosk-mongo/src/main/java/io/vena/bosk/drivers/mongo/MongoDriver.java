@@ -5,6 +5,7 @@ import io.vena.bosk.Bosk;
 import io.vena.bosk.BoskDriver;
 import io.vena.bosk.DriverFactory;
 import io.vena.bosk.Entity;
+import io.vena.bosk.drivers.mongo.modal.DynamicDriverFacade;
 
 public interface MongoDriver<R extends Entity> extends BoskDriver<R> {
 	/**
@@ -39,7 +40,9 @@ public interface MongoDriver<R extends Entity> extends BoskDriver<R> {
 		MongoDriverSettings driverSettings,
 		BsonPlugin bsonPlugin
 	) {
-		return (b, d) -> new SingleDocumentMongoDriver<>(b, clientSettings, driverSettings, bsonPlugin, d);
+		return (b, d) ->
+			DynamicDriverFacade.<RR>factory().build(b,
+				new SingleDocumentMongoDriver<>(b, clientSettings, driverSettings, bsonPlugin, d));
 	}
 
 	interface MongoDriverFactory<RR extends Entity> extends DriverFactory<RR> {
