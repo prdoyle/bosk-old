@@ -12,10 +12,10 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class DynamicDriverFacade<R extends Entity> implements MongoDriver<R> {
+public final class ModalDriverFacade<R extends Entity> implements MongoDriver<R> {
 	private final AtomicReference<MongoDriver<R>> current;
 
-	DynamicDriverFacade(MongoDriver<R> initial) {
+	ModalDriverFacade(MongoDriver<R> initial) {
 		current = new AtomicReference<>(initial);
 	}
 
@@ -23,11 +23,12 @@ public final class DynamicDriverFacade<R extends Entity> implements MongoDriver<
 	 * @throws ClassCastException if the downstream driver is not a {@link MongoDriver}.
 	 */
 	public static <RR extends Entity> Factory<RR> factory() {
-		return (b,d) -> new DynamicDriverFacade<>((MongoDriver<RR>) d);
+		return (b,d) -> new ModalDriverFacade<>((MongoDriver<RR>) d);
 	}
 
 	public interface Factory<R extends Entity> extends DriverFactory<R> {
-		@Override DynamicDriverFacade<R> build(Bosk<R> bosk, BoskDriver<R> downstream);
+		@Override
+		ModalDriverFacade<R> build(Bosk<R> bosk, BoskDriver<R> downstream);
 	}
 
 	MongoDriver<R> currentImplementation() { return current.get(); }

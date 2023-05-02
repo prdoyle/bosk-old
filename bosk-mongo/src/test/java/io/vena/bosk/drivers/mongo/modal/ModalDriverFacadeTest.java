@@ -27,9 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @UsesMongoService
-class DynamicDriverFacadeTest extends AbstractMongoDriverTest implements TestParameters {
+class ModalDriverFacadeTest extends AbstractMongoDriverTest implements TestParameters {
 	Bosk<TestRoot> bosk;
-	DynamicDriverFacade<TestRoot> facade;
+	ModalDriverFacade<TestRoot> facade;
 	RecordingMongoDriver<TestRoot> impl1, impl2;
 	Refs refs;
 	TestEntityBuilder teb;
@@ -46,7 +46,7 @@ class DynamicDriverFacadeTest extends AbstractMongoDriverTest implements TestPar
 	}
 
 	@ParametersByName
-	public DynamicDriverFacadeTest(MongoDriverSettings.MongoDriverSettingsBuilder driverSettings) {
+	public ModalDriverFacadeTest(MongoDriverSettings.MongoDriverSettingsBuilder driverSettings) {
 		super(driverSettings);
 	}
 
@@ -54,7 +54,7 @@ class DynamicDriverFacadeTest extends AbstractMongoDriverTest implements TestPar
 	void setup() throws InvalidTypeException {
 		bosk = setUpBosk(DriverStack.of(
 			(b,d) -> {
-				facade = DynamicDriverFacade.<TestRoot>factory().build(b, d);
+				facade = ModalDriverFacade.<TestRoot>factory().build(b, d);
 				return facade;
 			},
 			(b,d) -> {
