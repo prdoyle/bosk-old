@@ -5,6 +5,8 @@ import io.vena.bosk.Bosk;
 import io.vena.bosk.BoskDriver;
 import io.vena.bosk.DriverFactory;
 import io.vena.bosk.Entity;
+import io.vena.bosk.drivers.mongo.v2.MainDriver;
+import java.io.IOException;
 
 public interface MongoDriver<R extends Entity> extends BoskDriver<R> {
 	/**
@@ -23,7 +25,7 @@ public interface MongoDriver<R extends Entity> extends BoskDriver<R> {
 	 * This produces predictable results even if done concurrently with
 	 * other database updates.
 	 */
-	void refurbish();
+	void refurbish() throws IOException;
 
 	/**
 	 * Frees up resources used by this driver and leaves it unusable.
@@ -39,7 +41,8 @@ public interface MongoDriver<R extends Entity> extends BoskDriver<R> {
 		MongoDriverSettings driverSettings,
 		BsonPlugin bsonPlugin
 	) {
-		return (b, d) -> new SingleDocumentMongoDriver<>(b, clientSettings, driverSettings, bsonPlugin, d);
+//		return (b, d) -> new SingleDocumentMongoDriver<>(b, clientSettings, driverSettings, bsonPlugin, d);
+		return (b, d) -> new MainDriver<>(b, clientSettings, driverSettings, bsonPlugin, d);
 	}
 
 	interface MongoDriverFactory<RR extends Entity> extends DriverFactory<RR> {
