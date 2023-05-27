@@ -71,13 +71,11 @@ final class SingleDocFormatDriver<R extends Entity> implements FormatDriver<R> {
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
-		LOGGER.debug("+ submitReplacement({})", target);
 		doUpdate(replacementDoc(target, newValue), standardPreconditions(target));
 	}
 
 	@Override
 	public <T> void submitInitialization(Reference<T> target, T newValue) {
-		LOGGER.debug("+ submitInitialization({})", target);
 		BsonDocument filter = standardPreconditions(target);
 		filter.put(dottedFieldNameOf(target, rootRef), new BsonDocument("$exists", FALSE));
 		if (doUpdate(replacementDoc(target, newValue), filter)) {
@@ -89,7 +87,6 @@ final class SingleDocFormatDriver<R extends Entity> implements FormatDriver<R> {
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
-		LOGGER.debug("+ submitDeletion({})", target);
 		if (target.path().isEmpty()) {
 			throw new IllegalArgumentException("Can't delete the root of the bosk");
 		} else {
@@ -99,7 +96,6 @@ final class SingleDocFormatDriver<R extends Entity> implements FormatDriver<R> {
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
-		LOGGER.debug("+ submitConditionalReplacement({}, {} = {})", target, precondition, requiredValue);
 		doUpdate(
 			replacementDoc(target, newValue),
 			explicitPreconditions(target, precondition, requiredValue));
@@ -107,7 +103,6 @@ final class SingleDocFormatDriver<R extends Entity> implements FormatDriver<R> {
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
-		LOGGER.debug("+ submitConditionalDeletion({}, {} = {})", target, precondition, requiredValue);
 		doUpdate(
 			deletionDoc(target),
 			explicitPreconditions(target, precondition, requiredValue));
@@ -115,7 +110,6 @@ final class SingleDocFormatDriver<R extends Entity> implements FormatDriver<R> {
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		LOGGER.debug("+ flush()");
 		flushLock.awaitRevision(readRevisionNumber());
 		LOGGER.debug("| Flush downstream");
 		downstream.flush();
@@ -234,6 +228,7 @@ final class SingleDocFormatDriver<R extends Entity> implements FormatDriver<R> {
 	 * If the database contains no revision number, returns {@link io.vena.bosk.drivers.mongo.v2.Formatter#REVISION_ZERO}.
 	 */
 	private BsonInt64 readRevisionNumber() throws FlushFailureException {
+		LOGGER.debug("readRevisionNumber");
 		try {
 			try (MongoCursor<Document> cursor = collection
 				.find(DOCUMENT_FILTER).limit(1)
@@ -247,13 +242,16 @@ final class SingleDocFormatDriver<R extends Entity> implements FormatDriver<R> {
 					// In that case, newer servers (including this one) will create the
 					// the field upon initialization, and we're ok to wait for any old
 					// revision number at all.
+					LOGGER.debug("No revision field; using zero");
 					return REVISION_ZERO;
 				} else {
+					LOGGER.debug("Read revision {}", result);
 					return new BsonInt64(result);
 				}
 			}
 		} catch (NoSuchElementException e) {
 			// Document doesn't exist at all yet. We're ok to wait for any update at all.
+			LOGGER.debug("No document; using zero");
 			return REVISION_ZERO;
 		} catch (RuntimeException e) {
 			LOGGER.debug("readRevisionNumber failed", e);

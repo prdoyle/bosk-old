@@ -87,12 +87,17 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 
 	@Override
 	public R initialRoot(Type rootType) throws InvalidTypeException, IOException, InterruptedException {
+		logDriverOperation("initialRoot");
 		// TODO: How to initialize the database and collection if they don't exist?
 		R result;
 		try {
 			result = initializeReplication();
 		} catch (UninitializedCollectionException e) {
-			LOGGER.debug("Initializing collection", e);
+			if (LOGGER.isTraceEnabled()) {
+				LOGGER.trace("Initializing collection", e);
+			} else {
+				LOGGER.info("Initializing collection");
+			}
 			FormatDriver<R> newDriver = newSingleDocFormatDriver(); // TODO: Pick based on config?
 			result = downstream.initialRoot(rootType);
 			newDriver.initializeCollection(new StateAndMetadata<>(result, REVISION_ONE));
@@ -107,7 +112,7 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 	}
 
 	private void recoverFrom(Exception exception) {
-		LOGGER.error("Unexpected exception; reinitializing", new Exception(exception));
+		LOGGER.error("Recovering from unexpected exception; reinitializing", exception);
 		R result;
 		try {
 			result = initializeReplication();
@@ -126,36 +131,43 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
+		logDriverOperation("submitReplacement({})", target);
 		formatDriver.submitReplacement(target, newValue);
 	}
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
+		logDriverOperation("submitConditionalReplacement({}, {} = {})", target, precondition, requiredValue);
 		formatDriver.submitConditionalReplacement(target, newValue, precondition, requiredValue);
 	}
 
 	@Override
 	public <T> void submitInitialization(Reference<T> target, T newValue) {
+		logDriverOperation("submitInitialization({})", target);
 		formatDriver.submitInitialization(target, newValue);
 	}
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
+		logDriverOperation("submitDeletion({}, {})", target);
 		formatDriver.submitDeletion(target);
 	}
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
+		logDriverOperation("submitConditionalDeletion({}, {} = {})", target, precondition, requiredValue);
 		formatDriver.submitConditionalDeletion(target, precondition, requiredValue);
 	}
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
+		logDriverOperation("flush");
 		formatDriver.flush();
 	}
 
 	@Override
 	public void refurbish() throws IOException {
+		logDriverOperation("refurbish");
 		ClientSessionOptions sessionOptions = ClientSessionOptions.builder()
 			.causallyConsistent(true)
 			.defaultTransactionOptions(TransactionOptions.builder()
@@ -187,6 +199,7 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 
 	@Override
 	public void close() {
+		logDriverOperation("close");
 		isClosed = true;
 		receiver.close();
 		formatDriver.close();
@@ -268,6 +281,13 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 	private SingleDocFormatDriver<R> newSingleDocFormatDriver() {
 		return new SingleDocFormatDriver<>(
 			bosk, collection, driverSettings, bsonPlugin, downstream);
+	}
+
+	private void logDriverOperation(String description, Object... args) {
+		if (LOGGER.isDebugEnabled()) {
+			String formatString = "+ [" + bosk.name() + "] " + description;
+			LOGGER.debug(formatString, args);
+		}
 	}
 
 	public static final String COLLECTION_NAME = "boskCollection";

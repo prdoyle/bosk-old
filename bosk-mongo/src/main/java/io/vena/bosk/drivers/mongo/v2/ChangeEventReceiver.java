@@ -22,6 +22,7 @@ import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static java.lang.Thread.currentThread;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -43,6 +44,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  */
 @RequiredArgsConstructor
 class ChangeEventReceiver implements Closeable {
+	private final String boskName;
 	private final MongoCollection<Document> collection;
 	private final ExecutorService ex = Executors.newFixedThreadPool(1);
 
@@ -75,6 +77,7 @@ class ChangeEventReceiver implements Closeable {
 	 * @see #start()
 	 */
 	public boolean initialize(ChangeEventListener listener) throws ReceiverInitializationException {
+		LOGGER.debug("Initializing receiver");
 		try {
 			lock.lock();
 			stop();
@@ -108,6 +111,7 @@ class ChangeEventReceiver implements Closeable {
 			lock.lock();
 			Future<?> task = this.eventProcessingTask;
 			if (task != null) {
+				LOGGER.debug("Canceling event processing task");
 				task.cancel(true);
 				try {
 					task.get(10, SECONDS); // TODO: Config
@@ -136,11 +140,13 @@ class ChangeEventReceiver implements Closeable {
 
 	private void setupNewSession(ChangeEventListener newListener) {
 		assert this.eventProcessingTask == null;
+		LOGGER.debug("Setup new session");
 		this.currentSession = null; // In case any exceptions happen during this method
 
 		ChangeStreamDocument<Document> initialEvent;
 		BsonDocument resumePoint = lastProcessedResumeToken;
 		if (resumePoint == null) {
+			LOGGER.debug("Acquire initial resume token");
 			// TODO: Config
 			// Note: on a quiescent collection, tryNext() will wait for the Await Time to elapse, so keep it short
 			try (var initialCursor = collection.watch().maxAwaitTime(20, MILLISECONDS).cursor()) {
@@ -152,10 +158,12 @@ class ChangeEventReceiver implements Closeable {
 						"Cannot proceed without an initial resume token");
 					lastProcessedResumeToken = resumePoint;
 				} else {
+					LOGGER.debug("Received event while acquiring initial resume token; storing it for processing in event loop");
 					resumePoint = initialEvent.getResumeToken();
 				}
 			}
 		} else {
+			LOGGER.debug("Use existing resume token");
 			initialEvent = null;
 		}
 		MongoChangeStreamCursor<ChangeStreamDocument<Document>> cursor
@@ -167,6 +175,8 @@ class ChangeEventReceiver implements Closeable {
 	 * This method has no uncaught exceptions. They're all reported to {@link ChangeEventListener#onException}.
 	 */
 	private void eventProcessingLoop(Session session) {
+		String oldThreadName = currentThread().getName();
+		currentThread().setName(getClass().getSimpleName() + " " + boskName);
 		try {
 			if (session.initialEvent != null) {
 				processEvent(session, session.initialEvent);
@@ -180,8 +190,10 @@ class ChangeEventReceiver implements Closeable {
 			LOGGER.debug("Event loop interrupted", e);
 			session.listener.onException(e);
 		} catch (RuntimeException e) {
-			LOGGER.info("Unexpected exception; event loop aborted", e);
+			LOGGER.warn("Unexpected exception while processing events; event loop aborted", e);
 			session.listener.onException(e);
+		} finally {
+			currentThread().setName(oldThreadName);
 		}
 	}
 
