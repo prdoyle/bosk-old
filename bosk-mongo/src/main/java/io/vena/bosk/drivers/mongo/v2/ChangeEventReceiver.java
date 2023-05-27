@@ -1,5 +1,6 @@
 package io.vena.bosk.drivers.mongo.v2;
 
+import com.mongodb.MongoCommandException;
 import com.mongodb.MongoInterruptedException;
 import com.mongodb.client.MongoChangeStreamCursor;
 import com.mongodb.client.MongoCollection;
@@ -143,32 +144,42 @@ class ChangeEventReceiver implements Closeable {
 		LOGGER.debug("Setup new session");
 		this.currentSession = null; // In case any exceptions happen during this method
 
-		ChangeStreamDocument<Document> initialEvent;
-		BsonDocument resumePoint = lastProcessedResumeToken;
-		if (resumePoint == null) {
-			LOGGER.debug("Acquire initial resume token");
-			// TODO: Config
-			// Note: on a quiescent collection, tryNext() will wait for the Await Time to elapse, so keep it short
-			try (var initialCursor = collection.watch().maxAwaitTime(20, MILLISECONDS).cursor()) {
-				initialEvent = initialCursor.tryNext();
-				if (initialEvent == null) {
-					// In this case, tryNext() has caused the cursor to point to
-					// a token in the past, so we can reliably use that.
-					resumePoint = requireNonNull(initialCursor.getResumeToken(),
-						"Cannot proceed without an initial resume token");
-					lastProcessedResumeToken = resumePoint;
-				} else {
-					LOGGER.debug("Received event while acquiring initial resume token; storing it for processing in event loop");
-					resumePoint = initialEvent.getResumeToken();
+		for (int attempt = 1; attempt <= 2; attempt++) {
+			LOGGER.debug("Attempt #{}", attempt);
+			ChangeStreamDocument<Document> initialEvent;
+			BsonDocument resumePoint = lastProcessedResumeToken;
+			if (resumePoint == null) {
+				LOGGER.debug("Acquire initial resume token");
+				// TODO: Config
+				// Note: on a quiescent collection, tryNext() will wait for the Await Time to elapse, so keep it short
+				try (var initialCursor = collection.watch().maxAwaitTime(20, MILLISECONDS).cursor()) {
+					initialEvent = initialCursor.tryNext();
+					if (initialEvent == null) {
+						// In this case, tryNext() has caused the cursor to point to
+						// a token in the past, so we can reliably use that.
+						resumePoint = requireNonNull(initialCursor.getResumeToken(),
+							"Cannot proceed without an initial resume token");
+						lastProcessedResumeToken = resumePoint;
+					} else {
+						LOGGER.debug("Received event while acquiring initial resume token; storing it for processing in event loop");
+						resumePoint = initialEvent.getResumeToken();
+					}
 				}
+			} else {
+				LOGGER.debug("Use existing resume token");
+				initialEvent = null;
 			}
-		} else {
-			LOGGER.debug("Use existing resume token");
-			initialEvent = null;
+			try {
+				MongoChangeStreamCursor<ChangeStreamDocument<Document>> cursor
+					= collection.watch().resumeAfter(resumePoint).cursor();
+				currentSession = new Session(cursor, newListener, initialEvent);
+				return;
+			} catch (MongoCommandException e) {
+				LOGGER.error("Change stream cursor command failed; discarding resume token", e);
+				lastProcessedResumeToken = null;
+				// If we haven't already retried, we'll continue around the loop
+			}
 		}
-		MongoChangeStreamCursor<ChangeStreamDocument<Document>> cursor
-			= collection.watch().resumeAfter(resumePoint).cursor();
-		currentSession = new Session(cursor, newListener, initialEvent);
 	}
 
 	/**
