@@ -15,6 +15,7 @@ import io.vena.bosk.Reference;
 import io.vena.bosk.drivers.mongo.BsonPlugin;
 import io.vena.bosk.drivers.mongo.MongoDriverSettings;
 import io.vena.bosk.drivers.mongo.v2.Formatter.DocumentFields;
+import io.vena.bosk.exceptions.FlushFailureException;
 import io.vena.bosk.exceptions.InvalidTypeException;
 import io.vena.bosk.exceptions.NotYetImplementedException;
 import java.io.IOException;
@@ -232,7 +233,7 @@ final class SingleDocFormatDriver<R extends Entity> implements FormatDriver<R> {
 	 * @return Non-null revision number as per the database.
 	 * If the database contains no revision number, returns {@link io.vena.bosk.drivers.mongo.v2.Formatter#REVISION_ZERO}.
 	 */
-	private BsonInt64 readRevisionNumber() {
+	private BsonInt64 readRevisionNumber() throws FlushFailureException {
 		try {
 			try (MongoCursor<Document> cursor = collection
 				.find(DOCUMENT_FILTER).limit(1)
@@ -254,6 +255,9 @@ final class SingleDocFormatDriver<R extends Entity> implements FormatDriver<R> {
 		} catch (NoSuchElementException e) {
 			// Document doesn't exist at all yet. We're ok to wait for any update at all.
 			return REVISION_ZERO;
+		} catch (RuntimeException e) {
+			LOGGER.debug("readRevisionNumber failed", e);
+			throw new FlushFailureException(e);
 		}
 	}
 
