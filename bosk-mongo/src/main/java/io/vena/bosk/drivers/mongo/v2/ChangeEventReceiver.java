@@ -14,12 +14,16 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import lombok.AllArgsConstructor;
 import lombok.RequiredArgsConstructor;
+import lombok.var;
 import org.bson.BsonDocument;
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
@@ -43,15 +47,15 @@ class ChangeEventReceiver implements Closeable {
 	private final ExecutorService ex = Executors.newFixedThreadPool(1);
 
 	private final Lock lock = new ReentrantLock();
-	private volatile State current;
+	private volatile Session currentSession;
 	private volatile BsonDocument lastProcessedResumeToken;
 	private volatile Future<?> eventProcessingTask;
 
-	@RequiredArgsConstructor
-	private static final class State {
+	@AllArgsConstructor
+	private static final class Session {
 		final MongoChangeStreamCursor<ChangeStreamDocument<Document>> cursor;
-		final ChangeStreamDocument<Document> initialEvent;
 		final ChangeEventListener listener;
+		ChangeStreamDocument<Document> initialEvent;
 	}
 
 	/**
@@ -68,12 +72,13 @@ class ChangeEventReceiver implements Closeable {
 	 * For example, a {@link ChangeEventListener#onException} implementation can call this.
 	 *
 	 * @return true if we obtained a resume token.
+	 * @see #start()
 	 */
 	public boolean initialize(ChangeEventListener listener) throws ReceiverInitializationException {
 		try {
 			lock.lock();
 			stop();
-			setupNewState(listener);
+			setupNewSession(listener);
 			return lastProcessedResumeToken != null;
 		} catch (RuntimeException | InterruptedException | TimeoutException e) {
 			throw new ReceiverInitializationException(e);
@@ -85,11 +90,11 @@ class ChangeEventReceiver implements Closeable {
 	public void start() {
 		try {
 			lock.lock();
-			if (current == null) {
+			if (currentSession == null) {
 				throw new IllegalStateException("Receiver is not initialized");
 			}
 			if (eventProcessingTask == null) {
-				eventProcessingTask = ex.submit(() -> eventProcessingLoop(current));
+				eventProcessingTask = ex.submit(() -> eventProcessingLoop(currentSession));
 			} else {
 				LOGGER.debug("Already running");
 			}
@@ -129,49 +134,59 @@ class ChangeEventReceiver implements Closeable {
 		ex.shutdown();
 	}
 
-	private void setupNewState(ChangeEventListener newListener) {
+	private void setupNewSession(ChangeEventListener newListener) {
 		assert this.eventProcessingTask == null;
-		this.current = null; // In case any exceptions happen during this method
+		this.currentSession = null; // In case any exceptions happen during this method
 
-		MongoChangeStreamCursor<ChangeStreamDocument<Document>> cursor;
 		ChangeStreamDocument<Document> initialEvent;
-		if (lastProcessedResumeToken == null) {
-			cursor = collection.watch().cursor();
-			initialEvent = cursor.tryNext();
-			if (initialEvent == null) {
-				// In this case, tryNext() has caused the cursor to point to
-				// a token in the past, so we can reliably use that.
-				lastProcessedResumeToken = cursor.getResumeToken();
+		BsonDocument resumePoint = lastProcessedResumeToken;
+		if (resumePoint == null) {
+			// TODO: Config
+			// Note: on a quiescent collection, tryNext() will wait for the Await Time to elapse, so keep it short
+			try (var initialCursor = collection.watch().maxAwaitTime(20, MILLISECONDS).cursor()) {
+				initialEvent = initialCursor.tryNext();
+				if (initialEvent == null) {
+					// In this case, tryNext() has caused the cursor to point to
+					// a token in the past, so we can reliably use that.
+					resumePoint = requireNonNull(initialCursor.getResumeToken(),
+						"Cannot proceed without an initial resume token");
+					lastProcessedResumeToken = resumePoint;
+				} else {
+					resumePoint = initialEvent.getResumeToken();
+				}
 			}
 		} else {
-			cursor = collection.watch().resumeAfter(lastProcessedResumeToken).cursor();
 			initialEvent = null;
 		}
-		current = new State(cursor, initialEvent, newListener);
+		MongoChangeStreamCursor<ChangeStreamDocument<Document>> cursor
+			= collection.watch().resumeAfter(resumePoint).cursor();
+		currentSession = new Session(cursor, newListener, initialEvent);
 	}
 
 	/**
 	 * This method has no uncaught exceptions. They're all reported to {@link ChangeEventListener#onException}.
 	 */
-	private void eventProcessingLoop(State state) {
+	private void eventProcessingLoop(Session session) {
 		try {
-			if (state.initialEvent != null) {
-				processEvent(state, state.initialEvent);
+			if (session.initialEvent != null) {
+				processEvent(session, session.initialEvent);
+				session.initialEvent = null; // Allow GC
 			}
 			while (true) {
-				processEvent(state, state.cursor.next());
+				processEvent(session, session.cursor.next());
 			}
 		} catch (MongoInterruptedException e) {
+			// This happens when stop() cancels the task; this is part of normal operation
 			LOGGER.debug("Event loop interrupted", e);
-			state.listener.onException(e);
+			session.listener.onException(e);
 		} catch (RuntimeException e) {
 			LOGGER.info("Unexpected exception; event loop aborted", e);
-			state.listener.onException(e);
+			session.listener.onException(e);
 		}
 	}
 
-	private void processEvent(State state, ChangeStreamDocument<Document> event) {
-		state.listener.onEvent(event);
+	private void processEvent(Session session, ChangeStreamDocument<Document> event) {
+		session.listener.onEvent(event);
 		lastProcessedResumeToken = event.getResumeToken();
 	}
 
