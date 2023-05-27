@@ -119,7 +119,9 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 			// Because we haven't called receiver.start() yet, this won't race with other events
 			downstream.submitReplacement(rootRef, result);
 		}
-		receiver.start();
+		if (!isClosed) {
+			receiver.start();
+		}
 	}
 
 	@Override
