@@ -69,7 +69,7 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 			.getDatabase(driverSettings.database());
 		this.collection = database
 			.getCollection(COLLECTION_NAME);
-		this.receiver = new ChangeEventReceiver(collection);
+		this.receiver = new ChangeEventReceiver(bosk.name(), collection);
 	}
 
 	private void validateMongoClientSettings(MongoClientSettings clientSettings) {
