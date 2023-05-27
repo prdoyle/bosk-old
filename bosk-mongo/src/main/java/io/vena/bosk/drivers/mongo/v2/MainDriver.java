@@ -22,10 +22,12 @@ import io.vena.bosk.drivers.mongo.BsonPlugin;
 import io.vena.bosk.drivers.mongo.MongoDriver;
 import io.vena.bosk.drivers.mongo.MongoDriverSettings;
 import io.vena.bosk.exceptions.InvalidTypeException;
+import io.vena.bosk.exceptions.NotYetImplementedException;
 import java.io.IOException;
 import java.lang.reflect.Type;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.atomic.AtomicReference;
 import org.bson.BsonDocument;
 import org.bson.Document;
 import org.slf4j.Logger;
@@ -45,7 +47,7 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 	private final MongoCollection<Document> collection;
 	private final ChangeEventReceiver receiver;
 
-	private final Lock initializationLock = new ReentrantLock();
+	private final AtomicReference<FutureTask<R>> initializationInProgress = new AtomicReference<>();
 	private volatile FormatDriver<R> formatDriver = new DisconnectedDriver<>();
 	private volatile boolean isClosed = false;
 
@@ -218,28 +220,53 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 	 */
 	private R initializeReplication() throws UninitializedCollectionException {
 		if (isClosed) {
+			LOGGER.debug("Don't initialize replication on closed driver");
 			return null;
 		}
-		try {
-			initializationLock.lock();
-			formatDriver = new DisconnectedDriver<>(); // Fallback in case initialization fails
-			if (receiver.initialize(new Listener())) {
-				FormatDriver<R> newDriver = detectFormat();
-				StateAndMetadata<R> result = newDriver.loadAllState();
-				newDriver.onRevisionToSkip(result.revision);
-				formatDriver = newDriver;
-				return result.state;
-			} else {
-				LOGGER.warn("Unable to fetch resume token");
+
+		// To "debounce" this, we create a task object that will do the initialization
+		// if required, but we actually only run one at a time. Redundant tasks will just
+		// be discarded without ever having run.
+		FutureTask<R> initTask = new FutureTask<>(() -> {
+			LOGGER.debug("Initializing replication");
+			try {
+				formatDriver = new DisconnectedDriver<>(); // Fallback in case initialization fails
+				if (receiver.initialize(new Listener())) {
+					FormatDriver<R> newDriver = detectFormat();
+					StateAndMetadata<R> result = newDriver.loadAllState();
+					newDriver.onRevisionToSkip(result.revision);
+					formatDriver = newDriver;
+					return result.state;
+				} else {
+					LOGGER.warn("Unable to fetch resume token; disconnected");
+					return null;
+				}
+			} catch (ReceiverInitializationException | IOException e) {
+				LOGGER.warn("Failed to initialize replication", e);
 				return null;
+			} finally {
+				// Clearing the map entry here allows the next initialization task to be created
+				// now that this one has completed
+				initializationInProgress.set(null);
 			}
-		} catch (ReceiverInitializationException | IOException e) {
-			LOGGER.warn("Failed to initialize replication", e);
-			return null;
-		} finally {
-			assert formatDriver != null;
-			initializationLock.unlock();
+		});
+
+		// Use initializationInProgress to check for an existing task, and if there isn't
+		// one, use the new one we just created.
+		FutureTask<R> init = initializationInProgress.updateAndGet(x -> x == null? initTask : x);
+
+		// This either runs the task (if it's the new one we just created) or waits for the run in progress to finish.
+		init.run();
+		
+		return init.get();
+	}
+
+	private final class Initialization {
+
+		R awaitCompletion() {
+
 		}
+
 	}
 
 	private final class Listener implements ChangeEventListener {
