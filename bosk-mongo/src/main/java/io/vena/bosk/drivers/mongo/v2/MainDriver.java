@@ -96,9 +96,9 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 			result = initializeReplication();
 		} catch (UninitializedCollectionException e) {
 			if (LOGGER.isTraceEnabled()) {
-				LOGGER.trace("Initializing collection", e);
+				LOGGER.trace("Creating collection", e);
 			} else {
-				LOGGER.info("Initializing collection");
+				LOGGER.info("Creating collection");
 			}
 			FormatDriver<R> newDriver = newSingleDocFormatDriver(); // TODO: Pick based on config?
 			result = downstream.initialRoot(rootType);
@@ -134,42 +134,52 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
 		logDriverOperation("submitReplacement({})", target);
-		formatDriver.submitReplacement(target, newValue);
+		retryIfDisconnected(() ->
+			formatDriver.submitReplacement(target, newValue));
 	}
 
 	@Override
 	public <T> void submitConditionalReplacement(Reference<T> target, T newValue, Reference<Identifier> precondition, Identifier requiredValue) {
 		logDriverOperation("submitConditionalReplacement({}, {} = {})", target, precondition, requiredValue);
-		formatDriver.submitConditionalReplacement(target, newValue, precondition, requiredValue);
+		retryIfDisconnected(() ->
+			formatDriver.submitConditionalReplacement(target, newValue, precondition, requiredValue));
 	}
 
 	@Override
 	public <T> void submitInitialization(Reference<T> target, T newValue) {
 		logDriverOperation("submitInitialization({})", target);
-		formatDriver.submitInitialization(target, newValue);
+		retryIfDisconnected(() ->
+			formatDriver.submitInitialization(target, newValue));
 	}
 
 	@Override
 	public <T> void submitDeletion(Reference<T> target) {
 		logDriverOperation("submitDeletion({}, {})", target);
-		formatDriver.submitDeletion(target);
+		retryIfDisconnected(() ->
+			formatDriver.submitDeletion(target));
 	}
 
 	@Override
 	public <T> void submitConditionalDeletion(Reference<T> target, Reference<Identifier> precondition, Identifier requiredValue) {
 		logDriverOperation("submitConditionalDeletion({}, {} = {})", target, precondition, requiredValue);
-		formatDriver.submitConditionalDeletion(target, precondition, requiredValue);
+		retryIfDisconnected(() ->
+			formatDriver.submitConditionalDeletion(target, precondition, requiredValue));
 	}
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
 		logDriverOperation("flush");
-		formatDriver.flush();
+		this.<IOException,InterruptedException> retryIfDisconnected(() ->
+			formatDriver.flush());
 	}
 
 	@Override
 	public void refurbish() throws IOException {
 		logDriverOperation("refurbish");
+		retryIfDisconnected(this::doRefurbish);
+	}
+
+	private void doRefurbish() throws IOException {
 		ClientSessionOptions sessionOptions = ClientSessionOptions.builder()
 			.causallyConsistent(true)
 			.defaultTransactionOptions(TransactionOptions.builder()
@@ -184,7 +194,7 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 				// That system needs to cope with a refurbish operations without any help.
 				session.startTransaction();
 				StateAndMetadata<R> result = formatDriver.loadAllState();
-				FormatDriver<R> newFormatDriver = detectFormat();
+				FormatDriver<R> newFormatDriver = detectFormat(); // TODO: use the configured driver, not the detected one
 				collection.deleteMany(new BsonDocument());
 				newFormatDriver.initializeCollection(result);
 				session.commitTransaction();
@@ -205,6 +215,20 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 		isClosed = true;
 		receiver.close();
 		formatDriver.close();
+	}
+
+	private <X extends Exception, Y extends Exception> void retryIfDisconnected(Action<X, Y> action) throws X, Y {
+		try {
+			action.run();
+		} catch (DisconnectedException e) {
+			recoverFrom(e);
+			LOGGER.debug("Retrying");
+			action.run();
+		}
+	}
+
+	private interface Action<X extends Exception, Y extends Exception> {
+		void run() throws X, Y;
 	}
 
 	/**
@@ -257,16 +281,18 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 
 		// This either runs the task (if it's the new one we just created) or waits for the run in progress to finish.
 		init.run();
-		
-		return init.get();
-	}
 
-	private final class Initialization {
-
-		R awaitCompletion() {
-
+		try {
+			return init.get();
+		} catch (InterruptedException e) {
+			throw new NotYetImplementedException(e);
+		} catch (ExecutionException e) {
+			if (e.getCause() instanceof UninitializedCollectionException) {
+				throw (UninitializedCollectionException) e.getCause();
+			} else {
+				throw new NotYetImplementedException(e);
+			}
 		}
-
 	}
 
 	private final class Listener implements ChangeEventListener {
@@ -312,7 +338,7 @@ public class MainDriver<R extends Entity> implements MongoDriver<R> {
 
 	private void logDriverOperation(String description, Object... args) {
 		if (LOGGER.isDebugEnabled()) {
-			String formatString = "+ [" + bosk.name() + "] " + description;
+			String formatString = "+[" + bosk.name() + "] " + description;
 			LOGGER.debug(formatString, args);
 		}
 	}

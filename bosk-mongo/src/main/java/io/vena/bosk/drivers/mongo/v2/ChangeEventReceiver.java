@@ -187,7 +187,7 @@ class ChangeEventReceiver implements Closeable {
 	 */
 	private void eventProcessingLoop(Session session) {
 		String oldThreadName = currentThread().getName();
-		currentThread().setName(getClass().getSimpleName() + " " + boskName);
+		currentThread().setName(getClass().getSimpleName() + " [" + boskName + "]");
 		try {
 			if (session.initialEvent != null) {
 				processEvent(session, session.initialEvent);

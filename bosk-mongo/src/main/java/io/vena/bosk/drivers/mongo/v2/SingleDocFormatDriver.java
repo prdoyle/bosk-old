@@ -181,6 +181,9 @@ final class SingleDocFormatDriver<R extends Entity> implements FormatDriver<R> {
 					flushLock.finishedRevision(revision);
 				}
 			} break;
+			case DELETE: {
+				LOGGER.info("Delete event ignored (id={}). Assuming the document will be created again...", event.getDocumentKey());
+			} break;
 			default: {
 				throw new NotYetImplementedException("Unknown change stream event: " + event);
 			}

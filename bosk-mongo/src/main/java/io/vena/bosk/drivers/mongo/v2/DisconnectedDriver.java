@@ -4,8 +4,6 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import io.vena.bosk.Entity;
 import io.vena.bosk.Identifier;
 import io.vena.bosk.Reference;
-import io.vena.bosk.exceptions.FlushFailureException;
-import io.vena.bosk.exceptions.NotYetImplementedException;
 import java.io.IOException;
 import org.bson.BsonInt64;
 import org.bson.Document;
@@ -13,6 +11,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 class DisconnectedDriver<R extends Entity> implements FormatDriver<R> {
+	@Override
+	public boolean isDisconnected() {
+		return true;
+	}
+
 	@Override
 	public <T> void submitReplacement(Reference<T> target, T newValue) {
 		throw disconnected("submitReplacement");
@@ -40,7 +43,7 @@ class DisconnectedDriver<R extends Entity> implements FormatDriver<R> {
 
 	@Override
 	public void flush() throws IOException, InterruptedException {
-		throw new FlushFailureException("Disconnected");
+		throw disconnected("flush");
 	}
 
 	@Override
@@ -61,8 +64,8 @@ class DisconnectedDriver<R extends Entity> implements FormatDriver<R> {
 		throw new AssertionError("Resynchronization should not tell DisconnectedDriver to skip a revision");
 	}
 
-	private RuntimeException disconnected(String name) {
-		return new NotYetImplementedException("Disconnected driver cannot implement " + name);
+	private DisconnectedException disconnected(String name) {
+		return new DisconnectedException("Disconnected driver cannot execute " + name);
 	}
 
 	@Override

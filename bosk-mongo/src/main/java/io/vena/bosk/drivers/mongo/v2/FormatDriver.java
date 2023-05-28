@@ -52,6 +52,8 @@ public interface FormatDriver<R extends Entity> extends MongoDriver<R> {
 	 */
 	void initializeCollection(StateAndMetadata<R> contents) throws InitializationFailureException;
 
+	default boolean isDisconnected() { return false; }
+
 	@Override
 	default R initialRoot(Type rootType) {
 		throw new UnsupportedOperationException(
